@@ -6,6 +6,7 @@ pub struct Context {
     pub queue: wgpu::Queue,
     pub device: wgpu::Device,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
+    pub proj_bind_group_layout: wgpu::BindGroupLayout,
     pub view_bind_group_layout: wgpu::BindGroupLayout,
 
     pub aspect_ratio: f32,
@@ -70,6 +71,21 @@ impl Context {
                 label: None,
             });
 
+        let proj_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: None,
+            });
+
         let view_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
@@ -82,7 +98,7 @@ impl Context {
                     },
                     count: None,
                 }],
-                label: Some("camera_bind_group_layout"),
+                label: None,
             });
 
         Context {
@@ -91,6 +107,7 @@ impl Context {
             queue,
             device,
             texture_bind_group_layout,
+            proj_bind_group_layout,
             view_bind_group_layout,
             aspect_ratio: inner_size.width as f32 / inner_size.height as f32,
             dimensions: cgmath::vec2(inner_size.width, inner_size.height),

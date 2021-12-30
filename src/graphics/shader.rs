@@ -1,4 +1,4 @@
-use crate::graphics;
+use super::GraphicsContext;
 
 pub struct Shader<'a> {
     pub module: wgpu::ShaderModule,
@@ -8,7 +8,7 @@ pub struct Shader<'a> {
 
 impl<'a> Shader<'a> {
     pub fn new<'temp>(
-        gfx: &graphics::Context,
+        gfx: &GraphicsContext,
         source: &'temp str,
         vs_name: &'a str,
         fs_name: &'a str,

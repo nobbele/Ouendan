@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use image::GenericImageView;
 use wgpu::util::DeviceExt;
 
 use crate::graphics;
+
+use super::{ArcTexture, GraphicsContext};
 
 pub struct Texture {
     // Do these need to be kept alive?
@@ -10,10 +14,18 @@ pub struct Texture {
     pub sampler: wgpu::Sampler,
 
     pub bind_group: wgpu::BindGroup,
+
+    // Could be reused but would just be annoying to deal with
+    pub vertex_buffer: graphics::Buffer,
+    pub index_buffer: graphics::Buffer,
 }
 
 impl Texture {
-    pub fn new(gfx: &graphics::Context, image_data: &[u8], format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        gfx: &GraphicsContext,
+        image_data: &[u8],
+        format: wgpu::TextureFormat,
+    ) -> ArcTexture {
         let img = image::load_from_memory(image_data).unwrap();
         let rgba = img.as_rgba8().unwrap();
         let dimensions = img.dimensions();
@@ -62,11 +74,42 @@ impl Texture {
             label: None,
         });
 
-        Texture {
+        let half_extent = (dimensions.0 as f32 / 2.0, dimensions.1 as f32 / 2.0);
+        let vertex_buffer = graphics::Buffer::new_with_alignable_data(
+            gfx,
+            &[
+                graphics::Vertex {
+                    position: cgmath::vec2(-half_extent.0, half_extent.1),
+                    uv: cgmath::vec2(0.0, 1.0),
+                },
+                graphics::Vertex {
+                    position: cgmath::vec2(-half_extent.0, -half_extent.1),
+                    uv: cgmath::vec2(0.0, 0.0),
+                },
+                graphics::Vertex {
+                    position: cgmath::vec2(half_extent.0, -half_extent.1),
+                    uv: cgmath::vec2(1.0, 0.0),
+                },
+                graphics::Vertex {
+                    position: cgmath::vec2(half_extent.0, half_extent.1),
+                    uv: cgmath::vec2(1.0, 1.0),
+                },
+            ],
+            wgpu::BufferUsages::VERTEX,
+        );
+        let index_buffer = graphics::Buffer::new_with_data::<u16>(
+            gfx,
+            &[0, 1, 2, 2, 3, 0],
+            wgpu::BufferUsages::INDEX,
+        );
+
+        Arc::new(Texture {
             texture,
             view,
             sampler,
             bind_group,
-        }
+            vertex_buffer,
+            index_buffer,
+        })
     }
 }

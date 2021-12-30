@@ -1,84 +1,157 @@
-use lyon::lyon_tessellation::{
-    BuffersBuilder, FillOptions, FillTessellator, FillVertex, VertexBuffers,
-};
+#![feature(drain_filter)]
+
 use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
+use crate::{
+    game::{
+        screen::{GameLoadingResource, GameScreen, Screen, Updatable},
+        GameContext, GameResources, PlayingScreen,
+    },
+    graphics::Renderable,
+    job::spawn_job,
+};
+
+pub mod game;
 pub mod graphics;
+pub mod job;
 pub mod math;
+
+pub type ArcLock<T> = std::sync::Arc<std::sync::RwLock<T>>;
 
 fn main() {
     dotenv::dotenv().ok();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    let gfx = graphics::Context::new(&window);
+    let ctx = std::sync::Arc::new(GameContext::new(
+        std::sync::Arc::new(graphics::context::Context::new(&window)),
+        kira::manager::AudioManager::new(kira::manager::AudioManagerSettings::default()).unwrap(),
+    ));
+    let gfx = &ctx.gfx;
+
     let shader = graphics::Shader::new(
         &gfx,
         include_str!("graphics/shaders/shader.wgsl"),
         "vs_main",
         "fs_main",
     );
-    let shader_pipeline = graphics::Pipeline::new(&gfx, &shader);
+    let pipeline = graphics::Pipeline::new(&gfx, &shader);
 
-    let mut geometry: VertexBuffers<graphics::Vertex, u16> = VertexBuffers::new();
-
-    let mut tess = FillTessellator::new();
-    let radius = 150.0;
-    tess.tessellate_circle(
-        lyon::math::point(0.0, 0.0),
-        radius,
-        &FillOptions::default().with_tolerance(0.001),
-        &mut BuffersBuilder::new(&mut geometry, |vertex: FillVertex| graphics::Vertex {
-            position: cgmath::vec2(vertex.position().x, vertex.position().y),
-            uv: cgmath::vec2(
-                math::remap(-radius, radius, 0.0, 1.0, vertex.position().x),
-                math::remap(-radius, radius, 1.0, 0.0, vertex.position().y),
-            ),
-        }),
-    )
-    .unwrap();
-
-    let vertex_buffer = graphics::Buffer::new_with_alignable_data(
-        &gfx,
-        &geometry.vertices,
-        wgpu::BufferUsages::VERTEX,
+    #[rustfmt::skip]
+    pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.5, 0.0,
+        0.0, 0.0, 0.5, 1.0,
     );
-    let index_buffer =
-        graphics::Buffer::new_with_data::<u16>(&gfx, &geometry.indices, wgpu::BufferUsages::INDEX);
+    let proj = OPENGL_TO_WGPU_MATRIX
+        * cgmath::ortho(
+            0.0,
+            gfx.dimensions.x as f32,
+            gfx.dimensions.y as f32,
+            0.0,
+            -1.0,
+            1.0,
+        );
 
-    let texture = graphics::Texture::new(
-        &gfx,
-        include_bytes!("../happy-tree.png"),
-        wgpu::TextureFormat::Rgba8UnormSrgb,
-    );
+    let proj_buffer =
+        graphics::Buffer::new_with_alignable_data(&gfx, &[proj], wgpu::BufferUsages::UNIFORM);
 
-    let view = graphics::Transform {
-        position: cgmath::vec2(gfx.dimensions.x as f32 / 2.0, gfx.dimensions.y as f32 / 2.0),
-        scale: cgmath::vec2(1.0, 1.0),
-    }
-    .as_matrix(&gfx);
-
-    let view_buffer =
-        graphics::Buffer::new_with_alignable_data(&gfx, &[view], wgpu::BufferUsages::UNIFORM);
-
-    let view_bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &gfx.view_bind_group_layout,
+    let proj_bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &gfx.proj_bind_group_layout,
         entries: &[wgpu::BindGroupEntry {
             binding: 0,
-            resource: view_buffer.buffer.as_entire_binding(),
+            resource: proj_buffer.buffer.as_entire_binding(),
         }],
-        label: Some("camera_bind_group"),
+        label: None,
     });
+
+    let mut load_game_resource_job = spawn_job({
+        let ctx = ctx.clone();
+        move || {
+            let gfx = &ctx.gfx;
+            let tinted_circle = graphics::Texture::new(
+                &gfx,
+                include_bytes!("../resources/circle/tinted.png"),
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+            );
+            let overlay_circle = graphics::Texture::new(
+                &gfx,
+                include_bytes!("../resources/circle/overlay.png"),
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+            );
+
+            let approach_circle = graphics::Texture::new(
+                &gfx,
+                include_bytes!("../resources/circle/approach.png"),
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+            );
+            let playfield = graphics::Texture::new(
+                &gfx,
+                include_bytes!("../resources/ui/playfield.png"),
+                wgpu::TextureFormat::Rgba8Unorm,
+            );
+
+            GameResources {
+                tinted_circle,
+                overlay_circle,
+                approach_circle,
+                playfield,
+            }
+        }
+    });
+
+    drop(gfx);
+
+    let mut current_screen: Option<GameScreen> = None;
+    let mut next_scene_resource: Option<GameLoadingResource> = Some(GameLoadingResource::Playing(
+        PlayingScreen::load(ctx.clone()),
+    ));
 
     event_loop.run(move |event, _target, control_flow| match event {
         winit::event::Event::WindowEvent { event, .. } => match event {
             winit::event::WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+            winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                if input.virtual_keycode.unwrap() == winit::event::VirtualKeyCode::Escape {
+                    ctx.song()
+                        .unwrap()
+                        .pause(kira::instance::PauseInstanceSettings { fade_tween: None })
+                        .unwrap();
+                }
+            }
             _ => {}
         },
         winit::event::Event::MainEventsCleared => {
+            if load_game_resource_job.finished() {
+                if let Some(game_loading_resource) = &mut next_scene_resource {
+                    match game_loading_resource {
+                        GameLoadingResource::Playing(r) => {
+                            if let Some(resource) = r.poll().unwrap() {
+                                current_screen =
+                                    Some(GameScreen::Playing(PlayingScreen::new(&ctx, resource)));
+                                next_scene_resource = None;
+                            }
+                        }
+                    };
+                }
+            } else {
+                if let Some(game_resources) = load_game_resource_job.poll().unwrap() {
+                    ctx.set_game_resources(game_resources);
+                }
+            }
+
+            match &mut current_screen {
+                Some(s) => match s {
+                    GameScreen::Playing(s) => s.update(&ctx),
+                },
+                None => {}
+            }
+
+            let gfx = &ctx.gfx;
+
             let frame = gfx.surface.get_current_texture().unwrap();
             let frame_view = frame
                 .texture
@@ -106,13 +179,14 @@ fn main() {
                         depth_stencil_attachment: None,
                     });
 
-                render_pass.set_pipeline(&shader_pipeline.pipeline);
-                render_pass.set_bind_group(0, &texture.bind_group, &[]);
-                render_pass.set_bind_group(1, &view_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, vertex_buffer.buffer.slice(..));
-                render_pass
-                    .set_index_buffer(index_buffer.buffer.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..index_buffer.element_count as u32, 0, 0..1);
+                render_pass.set_pipeline(&pipeline.pipeline);
+                render_pass.set_bind_group(0, &proj_bind_group, &[]);
+                match &current_screen {
+                    Some(s) => match s {
+                        GameScreen::Playing(s) => s.render(&mut render_pass),
+                    },
+                    None => {}
+                }
             }
 
             gfx.queue.submit(std::iter::once(command_encoder.finish()));
