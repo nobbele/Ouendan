@@ -1,6 +1,5 @@
-use crate::{
-    graphics::{self, spritebatch::SpriteIdx, GraphicsContext, Renderable, SpriteBatch, Transform},
-    math,
+use crate::graphics::{
+    self, spritebatch::SpriteIdx, GraphicsContext, Renderable, SpriteBatch, Transform,
 };
 
 use super::GameContext;
@@ -8,20 +7,19 @@ use super::GameContext;
 #[derive(Clone, Copy)]
 pub struct HitCircleEntry {
     #[allow(dead_code)]
-    tinted: SpriteIdx,
+    pub tinted: SpriteIdx,
     #[allow(dead_code)]
-    overlay: SpriteIdx,
-    approach: SpriteIdx,
-    index: usize,
+    pub overlay: SpriteIdx,
+    pub approach: SpriteIdx,
+    pub index: usize,
 }
 
 // Maybe make a triple-image batch instead of 3 separate batches?
 pub struct HitCircleBatch {
-    tinted: SpriteBatch,
-    overlay: SpriteBatch,
-    approach: SpriteBatch,
-    keys: Vec<HitCircleEntry>,
-    p: f32,
+    pub tinted: SpriteBatch,
+    pub overlay: SpriteBatch,
+    pub approach: SpriteBatch,
+    pub keys: Vec<HitCircleEntry>,
 }
 
 impl HitCircleBatch {
@@ -51,7 +49,6 @@ impl HitCircleBatch {
             overlay,
             approach,
             keys: Vec::new(),
-            p: 0.0,
         }
     }
 
@@ -61,7 +58,7 @@ impl HitCircleBatch {
         *self.approach.get_view_mut() = view;
     }
 
-    fn remove(&mut self, entry: HitCircleEntry) {
+    pub fn remove(&mut self, entry: HitCircleEntry) {
         self.tinted.remove(entry.tinted);
         self.overlay.remove(entry.overlay);
         self.approach.remove(entry.approach);
@@ -73,9 +70,9 @@ impl HitCircleBatch {
         self.keys.remove(keys_index);
     }
 
-    fn insert(&mut self, position: cgmath::Vector2<f32>, index: usize) {
+    pub fn insert(&mut self, position: cgmath::Vector2<f32>, index: usize) {
         let trans = Transform {
-            position,
+            position: cgmath::vec2(position.x, position.y),
             scale: cgmath::vec2(0.5, 0.5),
             rotation: cgmath::Rad(0.0),
         };
@@ -92,73 +89,9 @@ impl HitCircleBatch {
     }
 
     pub fn update(&mut self, ctx: &GameContext) {
-        let gfx = &ctx.gfx;
-        let song = ctx.song();
-        let chart = ctx.chart();
-        let chart_data = ctx.chart_data();
-        let chart_progress = ctx.chart_progress();
-        if song.is_none() || chart.is_none() || chart_data.is_none() || chart_progress.is_none() {
-            return;
-        }
-        let song = song.unwrap();
-        let chart = chart.as_ref().unwrap();
-        let chart_data = chart_data.as_ref().unwrap();
-        let chart_progress = chart_progress.as_ref().unwrap();
-
-        let song_position = song.position() as f32;
-
-        let mut display_objects = chart_data.objects[chart_progress.passed_index..]
-            .iter()
-            .enumerate()
-            .skip_while(|(_, obj)| {
-                song_position < obj.time - chart.modifiers.approach_seconds()
-                    || song_position > obj.time
-            })
-            .take_while(|(_, obj)| obj.time - chart.modifiers.approach_seconds() < song_position)
-            .map(|(idx, _)| chart_progress.passed_index + idx)
-            .collect::<Vec<_>>();
-
-        let mut to_remove = vec![];
-
-        for entry in &self.keys {
-            match display_objects.binary_search(&entry.index) {
-                Ok(idx) => {
-                    display_objects.remove(idx);
-                }
-                Err(_) => {
-                    to_remove.push(*entry);
-                    continue;
-                }
-            }
-
-            let trans = self.approach.get_mut(entry.approach).unwrap();
-            let hitobject = &chart_data.objects[entry.index];
-            let scale = math::clamped_remap(
-                hitobject.time - chart.modifiers.approach_seconds(),
-                hitobject.time,
-                2.0,
-                0.5,
-                song_position,
-            );
-            trans.scale.x = scale;
-            trans.scale.y = scale;
-            self.tinted.update(gfx);
-        }
-
-        for entry in to_remove {
-            self.remove(entry);
-        }
-
-        for display_object in display_objects {
-            let hitobject = &chart_data.objects[display_object];
-            self.insert(hitobject.position, display_object);
-        }
-
-        self.tinted.update(gfx);
-        self.overlay.update(gfx);
-        self.approach.update(gfx);
-
-        self.p += 0.01;
+        self.tinted.update(&ctx.gfx);
+        self.overlay.update(&ctx.gfx);
+        self.approach.update(&ctx.gfx);
     }
 }
 

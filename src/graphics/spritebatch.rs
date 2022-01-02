@@ -122,9 +122,9 @@ impl graphics::Renderable for SpriteBatch {
             wgpu::IndexFormat::Uint16,
         );
         pass.draw_indexed(
-            0..self.texture.index_buffer.element_count as u32,
+            0..self.texture.index_buffer.element_count as _,
             0,
-            0..self.transforms.len() as u32,
+            0..self.transforms.len() as _,
         );
     }
 }

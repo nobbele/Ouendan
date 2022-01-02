@@ -1,12 +1,25 @@
-/*pub struct Circle {}
+#[derive(Clone, Copy)]
+pub enum CurveType {
+    Perfect,
+    Bezier,
+    Linear,
+}
 
-pub enum HitObjectType {
-    Circle(Circle),
-}*/
+pub struct Slider {
+    pub control_points: Vec<cgmath::Vector2<f32>>,
+    pub curve_type: CurveType,
+    pub repeat: u32,
+}
+
+pub enum HitObjectData {
+    Circle,
+    Slider(Slider),
+}
 
 pub struct HitObject {
     pub position: cgmath::Vector2<f32>,
     pub time: f32,
+    pub data: HitObjectData,
 }
 
 pub struct ChartData {

@@ -75,7 +75,7 @@ impl Texture {
         });
 
         let half_extent = (dimensions.0 as f32 / 2.0, dimensions.1 as f32 / 2.0);
-        let vertex_buffer = graphics::Buffer::new_with_alignable_data(
+        let vertex_buffer = graphics::Buffer::new_with_data(
             gfx,
             &[
                 graphics::Vertex {

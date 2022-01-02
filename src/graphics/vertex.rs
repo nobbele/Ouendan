@@ -1,10 +1,12 @@
-use crevice::std140::AsStd140;
-
-#[derive(AsStd140)]
+#[derive(Debug, Copy, Clone)]
+#[repr(C)]
 pub struct Vertex {
     pub position: cgmath::Vector2<f32>,
     pub uv: cgmath::Vector2<f32>,
 }
+
+unsafe impl bytemuck::Pod for Vertex {}
+unsafe impl bytemuck::Zeroable for Vertex {}
 
 impl Vertex {
     pub fn buffer_layout<'a>() -> wgpu::VertexBufferLayout<'a> {

@@ -1,5 +1,10 @@
-use super::{GameContext, PlayingScreen};
 use crate::job::JobHandle;
+
+use self::playing::PlayingScreen;
+
+use super::GameContext;
+
+pub mod playing;
 
 pub trait Updatable {
     fn update(&mut self, ctx: &GameContext);

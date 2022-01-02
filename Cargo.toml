@@ -20,4 +20,9 @@ kira = "0.5.3"
 resources = "1.1.0"
 slotmap = "1.0.6"
 osu-parser = { path = "../osu-rs/osu-parser" }
+osu-types = { path = "../osu-rs/osu-types" }
+osu-utils = { path = "../osu-rs/osu-utils" }
 trait_enum = "0.5.0"
+wgpu_glyph = "0.16.0"
+futures = "0.3.19"
+lyon = "0.17.10"
