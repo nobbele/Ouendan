@@ -86,6 +86,8 @@ fn main() {
         let ctx = ctx.clone();
         let progress = progress.clone();
         move || {
+            const PROGRESS: u8 = 100 / 5;
+
             let gfx = &ctx.gfx;
             let tinted_circle = graphics::Texture::new(
                 &gfx,
@@ -93,7 +95,7 @@ fn main() {
                 wgpu::TextureFormat::Rgba8UnormSrgb,
             );
 
-            progress.store(25, std::sync::atomic::Ordering::SeqCst);
+            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
             let overlay_circle = graphics::Texture::new(
                 &gfx,
@@ -101,7 +103,7 @@ fn main() {
                 wgpu::TextureFormat::Rgba8UnormSrgb,
             );
 
-            progress.store(50, std::sync::atomic::Ordering::SeqCst);
+            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
             let approach_circle = graphics::Texture::new(
                 &gfx,
@@ -109,7 +111,7 @@ fn main() {
                 wgpu::TextureFormat::Rgba8UnormSrgb,
             );
 
-            progress.store(75, std::sync::atomic::Ordering::SeqCst);
+            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
             let playfield = graphics::Texture::new(
                 &gfx,
@@ -117,7 +119,15 @@ fn main() {
                 wgpu::TextureFormat::Rgba8Unorm,
             );
 
-            progress.store(100, std::sync::atomic::Ordering::SeqCst);
+            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
+
+            let slider_track = graphics::Texture::new(
+                &gfx,
+                include_bytes!("../resources/circle/track.png"),
+                wgpu::TextureFormat::Rgba8Unorm,
+            );
+
+            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
             GameResources {
                 tinted_circle: tinted_circle.clone(),
@@ -125,7 +135,7 @@ fn main() {
                 approach_circle,
                 playfield,
 
-                slider_track: tinted_circle,
+                slider_track,
             }
         }
     });
@@ -140,7 +150,7 @@ fn main() {
         winit::event::Event::WindowEvent { event, .. } => match event {
             winit::event::WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
             winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                if input.virtual_keycode.unwrap() == winit::event::VirtualKeyCode::Escape {
+                if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Escape) {
                     ctx.song()
                         .unwrap()
                         .pause(kira::instance::PauseInstanceSettings { fade_tween: None })

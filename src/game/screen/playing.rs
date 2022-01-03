@@ -3,8 +3,8 @@ use osu_types::SpecificHitObject;
 use crate::{
     game::{
         chart::{self, Chart, ChartData},
-        hitcircle_batch::HitCircleBatch,
-        slider, ChartProgress, GameContext,
+        graphics::{hitcircle_batch::HitCircleBatch, slider},
+        ChartProgress, GameContext,
     },
     graphics::{Renderable, SpriteBatch, Transform},
     job::{spawn_job, JobHandle},
@@ -37,6 +37,7 @@ impl Screen for PlayingScreen {
             .unwrap();
             let beatmap = osu_parser::load_file(
                 "positive MAD-crew - Mynarco Addiction (Okoratu) [Ex].osu",
+                //"positive MAD-crew - Mynarco Addiction (Okoratu) [test].osu",
                 osu_parser::BeatmapParseOptions::default(),
             )
             .unwrap();
@@ -55,7 +56,7 @@ impl Screen for PlayingScreen {
             .add_sound(loading_res.sound)
             .unwrap();
         let instance_handle = sound_handle
-            .play(kira::instance::InstanceSettings::default())
+            .play(kira::instance::InstanceSettings::default().playback_rate(1.0))
             .unwrap();
 
         ctx.set_song(instance_handle);
@@ -107,13 +108,19 @@ impl Screen for PlayingScreen {
             ctx.chart().as_ref().unwrap().title.clone()
         );
 
-        let mut hitcircle_batch = HitCircleBatch::new(&ctx.gfx, 64);
+        let mut hitcircle_batch = HitCircleBatch::new(
+            &ctx.gfx,
+            game_resources.tinted_circle.clone(),
+            game_resources.overlay_circle.clone(),
+            game_resources.approach_circle.clone(),
+            64,
+        );
         hitcircle_batch.set_view(Transform {
             position: cgmath::vec2(
-                ctx.gfx.dimensions.x as f32 / 2.0,
-                ctx.gfx.dimensions.y as f32 / 2.0,
+                ctx.gfx.dimensions.x as f32 / 2.0 - 640.0 / 2.0,
+                ctx.gfx.dimensions.y as f32 / 2.0 - 480.0 / 2.0,
             ),
-            scale: cgmath::vec2(0.5, 0.5),
+            scale: cgmath::vec2(1.0, 1.0),
             rotation: cgmath::Rad(0.0),
         });
 
@@ -190,29 +197,35 @@ impl Updatable for PlayingScreen {
             let scale = math::clamped_remap(
                 hitobject.time - chart.modifiers.approach_seconds(),
                 hitobject.time,
-                2.0,
-                0.5,
+                1.0,
+                0.25,
                 song_position,
             );
             trans.scale.x = scale;
             trans.scale.y = scale;
-            self.hitcircle_batch.tinted.update(gfx);
         }
 
-        for (object_index, _slider_entry) in &self.visible_sliders {
-            match display_objects.binary_search(object_index) {
-                Ok(idx) => {
-                    display_objects.remove(idx);
-                }
-                Err(_) => {
-                    //to_remove.push(*entry);
-                    continue;
-                }
-            }
-        }
+        for (_object_index, _slider_entry) in &self.visible_sliders {}
 
         for entry in to_remove {
-            self.hitcircle_batch.remove(entry);
+            let hitobject = &chart_data.objects[entry.index];
+            match hitobject.data {
+                chart::HitObjectData::Circle => {
+                    self.hitcircle_batch.remove(entry);
+                }
+                chart::HitObjectData::Slider(_) => {
+                    self.hitcircle_batch.remove(entry);
+                    match self
+                        .visible_sliders
+                        .binary_search_by_key(&entry.index, |s| s.0)
+                    {
+                        Ok(idx) => {
+                            self.visible_sliders.remove(idx);
+                        }
+                        Err(_) => {}
+                    }
+                }
+            }
         }
 
         for display_object in display_objects {
@@ -223,6 +236,8 @@ impl Updatable for PlayingScreen {
                         .insert(hitobject.position, display_object);
                 }
                 chart::HitObjectData::Slider(slider) => {
+                    self.hitcircle_batch
+                        .insert(hitobject.position, display_object);
                     self.visible_sliders.push((
                         display_object,
                         slider::Slider::new(

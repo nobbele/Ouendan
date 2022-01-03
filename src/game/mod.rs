@@ -11,9 +11,8 @@ use crate::graphics::{ArcTexture, GraphicsContext};
 use self::chart::{Chart, ChartData};
 
 pub mod chart;
-pub mod hitcircle_batch;
+pub mod graphics;
 pub mod screen;
-pub mod slider;
 
 pub struct GameResources {
     pub tinted_circle: ArcTexture,

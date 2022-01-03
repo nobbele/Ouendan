@@ -1,6 +1,7 @@
-use crate::graphics::{self, GraphicsContext, Renderable};
-
-use super::chart;
+use crate::{
+    game::chart,
+    graphics::{self, GraphicsContext, Renderable},
+};
 
 pub struct Slider {
     track: graphics::ArcTexture,
@@ -60,10 +61,7 @@ impl Slider {
                     &mut lyon::lyon_tessellation::BuffersBuilder::new(
                         &mut geometry,
                         |vertex: lyon::lyon_tessellation::StrokeVertex| graphics::Vertex {
-                            position: cgmath::vec2(
-                                vertex.position().x + gfx.dimensions.x as f32 / 2.0,
-                                vertex.position().y + gfx.dimensions.y as f32 / 2.0,
-                            ),
+                            position: cgmath::vec2(vertex.position().x, vertex.position().y),
                             uv: cgmath::vec2(
                                 match vertex.side() {
                                     lyon::lyon_tessellation::Side::Left => 0.0,
@@ -88,7 +86,14 @@ impl Slider {
             wgpu::BufferUsages::VERTEX,
         );
 
-        let view = graphics::Transform::default();
+        let view = graphics::Transform {
+            position: cgmath::vec2(
+                gfx.dimensions.x as f32 / 2.0 - 640.0 / 2.0,
+                gfx.dimensions.y as f32 / 2.0 - 480.0 / 2.0,
+            ),
+            scale: cgmath::vec2(1.0, 1.0),
+            rotation: cgmath::Rad(0.0),
+        };
         let view_buffer = graphics::Buffer::new_with_alignable_data(
             gfx,
             &[view.as_matrix()],

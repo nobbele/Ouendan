@@ -1,8 +1,10 @@
-use crate::graphics::{
-    self, spritebatch::SpriteIdx, GraphicsContext, Renderable, SpriteBatch, Transform,
+use crate::{
+    game::GameContext,
+    graphics::{
+        self, spritebatch::SpriteIdx, ArcTexture, GraphicsContext, Renderable, SpriteBatch,
+        Transform,
+    },
 };
-
-use super::GameContext;
 
 #[derive(Clone, Copy)]
 pub struct HitCircleEntry {
@@ -23,27 +25,16 @@ pub struct HitCircleBatch {
 }
 
 impl HitCircleBatch {
-    pub fn new(gfx: &GraphicsContext, capacity: usize) -> Self {
-        let tinted_texture = graphics::Texture::new(
-            gfx,
-            include_bytes!("../../resources/circle/tinted.png"),
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-        );
-        let overlay_texture = graphics::Texture::new(
-            gfx,
-            include_bytes!("../../resources/circle/overlay.png"),
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-        );
-
-        let approach_texture = graphics::Texture::new(
-            gfx,
-            include_bytes!("../../resources/circle/approach.png"),
-            wgpu::TextureFormat::Rgba8UnormSrgb,
-        );
-
-        let tinted = SpriteBatch::new(gfx, tinted_texture, capacity);
-        let overlay = SpriteBatch::new(gfx, overlay_texture, capacity);
-        let approach = SpriteBatch::new(gfx, approach_texture, capacity);
+    pub fn new(
+        gfx: &GraphicsContext,
+        tinted: ArcTexture,
+        overlay: ArcTexture,
+        approach: ArcTexture,
+        capacity: usize,
+    ) -> Self {
+        let tinted = SpriteBatch::new(gfx, tinted, capacity);
+        let overlay = SpriteBatch::new(gfx, overlay, capacity);
+        let approach = SpriteBatch::new(gfx, approach, capacity);
         HitCircleBatch {
             tinted,
             overlay,
@@ -73,7 +64,7 @@ impl HitCircleBatch {
     pub fn insert(&mut self, position: cgmath::Vector2<f32>, index: usize) {
         let trans = Transform {
             position: cgmath::vec2(position.x, position.y),
-            scale: cgmath::vec2(0.5, 0.5),
+            scale: cgmath::vec2(0.25, 0.25),
             rotation: cgmath::Rad(0.0),
         };
         let tinted = self.tinted.insert(trans.clone());
