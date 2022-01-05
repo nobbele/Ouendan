@@ -9,6 +9,8 @@ pub struct Slider {
     pub control_points: Vec<cgmath::Vector2<f32>>,
     pub curve_type: CurveType,
     pub repeat: u32,
+    pub velocity: f32,
+    pub length: f32,
 }
 
 pub enum HitObjectData {
@@ -20,6 +22,17 @@ pub struct HitObject {
     pub position: cgmath::Vector2<f32>,
     pub time: f32,
     pub data: HitObjectData,
+}
+
+impl HitObject {
+    pub fn end_time(&self) -> f32 {
+        match &self.data {
+            HitObjectData::Circle => self.time,
+            HitObjectData::Slider(s) => {
+                self.time + (s.length / s.velocity) * (s.repeat as f32 + 1.0)
+            }
+        }
+    }
 }
 
 pub struct ChartData {

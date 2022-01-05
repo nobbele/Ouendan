@@ -1,6 +1,7 @@
 use crate::{
     game::chart,
     graphics::{self, GraphicsContext, Renderable},
+    math,
 };
 
 pub struct Slider {
@@ -57,7 +58,10 @@ impl Slider {
             tessellator
                 .tessellate_path(
                     &path,
-                    &lyon::lyon_tessellation::StrokeOptions::default().with_line_width(50.0),
+                    &lyon::lyon_tessellation::StrokeOptions::default()
+                        .with_line_width(50.0)
+                        .with_start_cap(lyon::lyon_tessellation::LineCap::Round)
+                        .with_end_cap(lyon::lyon_tessellation::LineCap::Round),
                     &mut lyon::lyon_tessellation::BuffersBuilder::new(
                         &mut geometry,
                         |vertex: lyon::lyon_tessellation::StrokeVertex| graphics::Vertex {
@@ -67,7 +71,7 @@ impl Slider {
                                     lyon::lyon_tessellation::Side::Left => 0.0,
                                     lyon::lyon_tessellation::Side::Right => 1.0,
                                 },
-                                vertex.advancement() / length,
+                                math::remap(0.0, length, 0.0, 1.0, vertex.advancement()),
                             ),
                         },
                     ),

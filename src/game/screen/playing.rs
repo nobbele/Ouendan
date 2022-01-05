@@ -64,6 +64,26 @@ impl Screen for PlayingScreen {
             title: loading_res.beatmap.info.metadata.title.clone(),
             modifiers: chart::Modifiers { approach_rate: 5.5 },
         });
+        let opx_per_secs = loading_res
+            .beatmap
+            .timing_points
+            .iter()
+            .scan(0.0, |bpm, tp| {
+                Some((
+                    tp.time,
+                    if tp.uninherited {
+                        *bpm = tp.beat_length;
+                        let bps = *bpm / 60.0;
+                        (100.0 * bps) / 1.0
+                    } else {
+                        let multiplier = -1.0 / (tp.beat_length / 100.0);
+                        let sv = loading_res.beatmap.info.difficulty.slider_multiplier * multiplier;
+                        let bps = *bpm / 60.0;
+                        (100.0 * bps) / sv
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
         ctx.set_chart_data(ChartData {
             objects: loading_res
                 .beatmap
@@ -81,20 +101,29 @@ impl Screen for PlayingScreen {
                             curve_type,
                             curve_points,
                             slides,
-                            length: _,
-                        } => chart::HitObjectData::Slider(chart::Slider {
-                            control_points: curve_points
+                            length,
+                        } => {
+                            let opx_per_sec = opx_per_secs
                                 .iter()
-                                .map(|p| cgmath::vec2(p.x as f32, p.y as f32))
-                                .collect::<Vec<_>>(),
-                            curve_type: match curve_type {
-                                osu_types::CurveType::Bezier => chart::CurveType::Bezier,
-                                osu_types::CurveType::Perfect => chart::CurveType::Perfect,
-                                osu_types::CurveType::Linear => chart::CurveType::Linear,
-                                osu_types::CurveType::Catmull => todo!(),
-                            },
-                            repeat: *slides as _,
-                        }),
+                                .find(|p| p.0 >= hit_object.time as i32)
+                                .unwrap()
+                                .1;
+                            chart::HitObjectData::Slider(chart::Slider {
+                                control_points: curve_points
+                                    .iter()
+                                    .map(|p| cgmath::vec2(p.x as f32, p.y as f32))
+                                    .collect::<Vec<_>>(),
+                                curve_type: match curve_type {
+                                    osu_types::CurveType::Bezier => chart::CurveType::Bezier,
+                                    osu_types::CurveType::Perfect => chart::CurveType::Perfect,
+                                    osu_types::CurveType::Linear => chart::CurveType::Linear,
+                                    osu_types::CurveType::Catmull => todo!(),
+                                },
+                                repeat: (*slides as u32 - 1),
+                                velocity: opx_per_sec,
+                                length: *length,
+                            })
+                        }
                         SpecificHitObject::Spinner { end_time: _ } => todo!(),
                         SpecificHitObject::ManiaHold {} => todo!(),
                     },
@@ -169,7 +198,7 @@ impl Updatable for PlayingScreen {
             .enumerate()
             .skip_while(|(_, obj)| {
                 song_position < obj.time - chart.modifiers.approach_seconds()
-                    || song_position > obj.time
+                    || song_position > obj.end_time()
             })
             .take_while(|(_, obj)| obj.time - chart.modifiers.approach_seconds() < song_position)
             .map(|(idx, _)| chart_progress.passed_index + idx)
@@ -259,11 +288,11 @@ impl Updatable for PlayingScreen {
 
 impl Renderable for PlayingScreen {
     fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
-        self.hitcircle_batch.render(pass);
-        self.playfield_batch.render(pass);
-
         for (_, slider) in &self.visible_sliders {
             slider.render(pass);
         }
+
+        self.hitcircle_batch.render(pass);
+        self.playfield_batch.render(pass);
     }
 }
