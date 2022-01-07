@@ -9,7 +9,7 @@ edition = "2021"
 log = "0.4.14"
 env_logger = "0.9.0"
 wgpu = "0.12.0"
-cgmath = "0.18.0"
+cgmath = { version = "0.18.0", features = ["mint"] }
 pollster = "0.2.4"
 winit = "0.26.0"
 dotenv = "0.15.0"
@@ -26,3 +26,4 @@ trait_enum = "0.5.0"
 wgpu_glyph = "0.16.0"
 futures = "0.3.19"
 lyon = "0.17.10"
+atlas-packer = { path = "atlas-packer" }

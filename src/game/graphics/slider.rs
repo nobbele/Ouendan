@@ -8,7 +8,8 @@ pub struct Slider {
     track: graphics::ArcTexture,
     vertex: graphics::Buffer,
     index: graphics::Buffer,
-    instance: graphics::Buffer,
+    // Temp
+    pub instance: graphics::Buffer,
     #[allow(dead_code)]
     view: graphics::Buffer,
     view_binding: wgpu::BindGroup,
@@ -87,7 +88,7 @@ impl Slider {
         let instance_buffer = graphics::Buffer::new_with_alignable_data(
             gfx,
             &[graphics::Transform::default().as_matrix()],
-            wgpu::BufferUsages::VERTEX,
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         );
 
         let view = graphics::Transform {
@@ -95,6 +96,7 @@ impl Slider {
                 gfx.dimensions.x as f32 / 2.0 - 640.0 / 2.0,
                 gfx.dimensions.y as f32 / 2.0 - 480.0 / 2.0,
             ),
+            layer: 0,
             scale: cgmath::vec2(1.0, 1.0),
             rotation: cgmath::Rad(0.0),
         };
@@ -126,7 +128,7 @@ impl Slider {
 impl Renderable for Slider {
     fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
         pass.set_bind_group(1, &self.view_binding, &[]);
-        pass.set_bind_group(2, &self.track.bind_group, &[]);
+        pass.set_bind_group(2, &self.track.raw.bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertex.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance.buffer.slice(..));
         pass.set_index_buffer(self.index.buffer.slice(..), wgpu::IndexFormat::Uint16);

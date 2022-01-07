@@ -64,6 +64,7 @@ impl HitCircleBatch {
     pub fn insert(&mut self, position: cgmath::Vector2<f32>, index: usize) {
         let trans = Transform {
             position: cgmath::vec2(position.x, position.y),
+            layer: 0,
             scale: cgmath::vec2(0.25, 0.25),
             rotation: cgmath::Rad(0.0),
         };

@@ -52,5 +52,9 @@ var t_sampler: sampler;
 
 [[stage(fragment)]]
 fn fs_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
-    return textureSample(texture, t_sampler, in.uv);
+    let sample = textureSample(texture, t_sampler, in.uv);
+    if (sample.w <= 0.0) {
+        discard;
+    }
+    return sample;
 }

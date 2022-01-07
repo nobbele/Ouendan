@@ -114,7 +114,7 @@ impl<'a> IntoIterator for &'a SpriteBatch {
 impl graphics::Renderable for SpriteBatch {
     fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
         pass.set_bind_group(1, &self.view_binding, &[]);
-        pass.set_bind_group(2, &self.texture.bind_group, &[]);
+        pass.set_bind_group(2, &self.texture.raw.bind_group, &[]);
         pass.set_vertex_buffer(0, self.texture.vertex_buffer.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         pass.set_index_buffer(

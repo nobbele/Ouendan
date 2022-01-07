@@ -149,6 +149,7 @@ impl Screen for PlayingScreen {
                 ctx.gfx.dimensions.x as f32 / 2.0 - 640.0 / 2.0,
                 ctx.gfx.dimensions.y as f32 / 2.0 - 480.0 / 2.0,
             ),
+            layer: 0,
             scale: cgmath::vec2(1.0, 1.0),
             rotation: cgmath::Rad(0.0),
         });
@@ -159,6 +160,7 @@ impl Screen for PlayingScreen {
                 ctx.gfx.dimensions.x as f32 / 2.0,
                 ctx.gfx.dimensions.y as f32 / 2.0,
             ),
+            layer: 0,
             scale: cgmath::vec2(
                 ctx.gfx.dimensions.x as f32 / 2732.0,
                 ctx.gfx.dimensions.y as f32 / 1572.0,
@@ -217,7 +219,7 @@ impl Updatable for PlayingScreen {
                 }
             }
 
-            let trans = self
+            let approach_trans = self
                 .hitcircle_batch
                 .approach
                 .get_mut(entry.approach)
@@ -230,11 +232,30 @@ impl Updatable for PlayingScreen {
                 0.25,
                 song_position,
             );
-            trans.scale.x = scale;
-            trans.scale.y = scale;
+            approach_trans.scale.x = scale;
+            approach_trans.scale.y = scale;
+            approach_trans.layer = 1000 + entry.index as u32;
+
+            let tinted_trans = self.hitcircle_batch.tinted.get_mut(entry.tinted).unwrap();
+            tinted_trans.layer = entry.index as u32;
+
+            let overlay_trans = self.hitcircle_batch.overlay.get_mut(entry.overlay).unwrap();
+            overlay_trans.layer = entry.index as u32;
         }
 
-        for (_object_index, _slider_entry) in &self.visible_sliders {}
+        for (object_index, slider_entry) in &self.visible_sliders {
+            gfx.queue.write_buffer(
+                &slider_entry.instance.buffer,
+                0,
+                crevice::std140::Std140::as_bytes(&crevice::std140::AsStd140::as_std140(
+                    &Transform {
+                        layer: *object_index as u32,
+                        ..Default::default()
+                    }
+                    .as_matrix(),
+                )),
+            );
+        }
 
         for entry in to_remove {
             let hitobject = &chart_data.objects[entry.index];

@@ -112,6 +112,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "atlas-packer"
+version = "0.1.0"
+dependencies = [
+ "mint",
+]
+
+[[package]]
 name = "atomic"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -292,6 +299,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a98d30140e3296250832bbaaff83b27dcd6fa3cc70fb6f1f3e5c9c0023b5317"
 dependencies = [
  "approx 0.4.0",
+ "mint",
  "num-traits",
 ]
 
@@ -1767,6 +1775,7 @@ dependencies = [
 name = "ouendan"
 version = "0.1.0"
 dependencies = [
+ "atlas-packer",
  "bytemuck",
  "cgmath",
  "crevice",
