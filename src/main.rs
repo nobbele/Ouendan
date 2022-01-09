@@ -1,6 +1,9 @@
 #![feature(drain_filter)]
 
+use std::collections::HashMap;
+
 use futures::task::SpawnExt;
+use num_traits::NumCast;
 use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text};
 use winit::{
     event_loop::{ControlFlow, EventLoop},
@@ -23,13 +26,38 @@ pub mod math;
 
 pub type ArcLock<T> = std::sync::Arc<std::sync::RwLock<T>>;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Rect<T> {
+    pub position: cgmath::Vector2<T>,
+    pub size: cgmath::Vector2<T>,
+}
+
+impl<T> Rect<T> {
+    pub fn new(x: T, y: T, w: T, h: T) -> Self {
+        Rect {
+            position: cgmath::vec2(x, y),
+            size: cgmath::vec2(w, h),
+        }
+    }
+    pub fn cast<U>(self) -> Rect<U>
+    where
+        T: NumCast + Copy,
+        U: NumCast + Copy,
+    {
+        Rect {
+            position: self.position.cast::<U>().unwrap(),
+            size: self.size.cast::<U>().unwrap(),
+        }
+    }
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     let ctx = std::sync::Arc::new(GameContext::new(
-        std::sync::Arc::new(graphics::context::Context::new(&window)),
+        graphics::context::Context::new(&window),
         kira::manager::AudioManager::new(kira::manager::AudioManagerSettings::default()).unwrap(),
     ));
     let gfx = &ctx.gfx;
@@ -86,32 +114,9 @@ fn main() {
         let ctx = ctx.clone();
         let progress = progress.clone();
         move || {
-            const PROGRESS: u8 = 100 / 5;
+            const PROGRESS: u8 = 100 / 2;
 
             let gfx = &ctx.gfx;
-            let tinted_circle = graphics::Texture::new(
-                &gfx,
-                include_bytes!("../resources/circle/tinted.png"),
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-            );
-
-            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
-
-            let overlay_circle = graphics::Texture::new(
-                &gfx,
-                include_bytes!("../resources/circle/overlay.png"),
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-            );
-
-            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
-
-            let approach_circle = graphics::Texture::new(
-                &gfx,
-                include_bytes!("../resources/circle/approach.png"),
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-            );
-
-            progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
             let playfield = graphics::Texture::new(
                 &gfx,
@@ -121,37 +126,46 @@ fn main() {
 
             progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
-            let slider_track = graphics::Texture::new(
+            let mut map = HashMap::new();
+            map.insert(
+                "tinted".to_owned(),
+                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                    "../resources/circle/tinted.png"
+                )),
+            );
+            map.insert(
+                "overlay".to_owned(),
+                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                    "../resources/circle/overlay.png"
+                )),
+            );
+            map.insert(
+                "track".to_owned(),
+                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                    "../resources/circle/track.png"
+                )),
+            );
+            map.insert(
+                "approach".to_owned(),
+                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                    "../resources/circle/approach.png"
+                )),
+            );
+
+            let hitobject_atlas = game::graphics::atlas::Atlas::new(
                 &gfx,
-                include_bytes!("../resources/circle/track.png"),
+                map.iter()
+                    .map(|(key, value)| (key, value))
+                    .collect::<Vec<_>>()
+                    .as_slice(),
                 wgpu::TextureFormat::Rgba8Unorm,
             );
 
             progress.fetch_add(PROGRESS, std::sync::atomic::Ordering::SeqCst);
 
-            let atlas = game::graphics::atlas::Atlas::new(
-                &gfx,
-                &[
-                    &graphics::texture::RawTextureData::from_raw_image(include_bytes!(
-                        "../resources/circle/tinted.png"
-                    )),
-                    &graphics::texture::RawTextureData::from_raw_image(include_bytes!(
-                        "../resources/circle/overlay.png"
-                    )),
-                    &graphics::texture::RawTextureData::from_raw_image(include_bytes!(
-                        "../resources/circle/approach.png"
-                    )),
-                ],
-                wgpu::TextureFormat::Rgba8Unorm,
-            );
-
             GameResources {
-                tinted_circle: tinted_circle.clone(),
-                overlay_circle,
-                approach_circle,
-                playfield,
-
-                slider_track,
+                hitobject_atlas,
+                playfield: std::sync::Arc::new(playfield),
             }
         }
     });
@@ -162,7 +176,7 @@ fn main() {
     ));
     //let mut next_scene_resource: Option<GameLoadingResource> = None;
 
-    let (_depth_texture, depth_view, _depth_sampler) = {
+    /*let (_depth_texture, depth_view, _depth_sampler) = {
         let size = wgpu::Extent3d {
             // 2.
             width: gfx.dimensions.x,
@@ -195,7 +209,7 @@ fn main() {
         });
 
         (texture, view, sampler)
-    };
+    };*/
 
     event_loop.run(move |event, _target, control_flow| match event {
         winit::event::Event::WindowEvent { event, .. } => match event {
@@ -262,14 +276,15 @@ fn main() {
                                 store: true,
                             },
                         }],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        /*depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                             view: &depth_view,
                             depth_ops: Some(wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(1.0),
                                 store: true,
                             }),
                             stencil_ops: None,
-                        }),
+                        }),*/
+                        depth_stencil_attachment: None,
                     });
 
                 render_pass.set_pipeline(&pipeline.pipeline);

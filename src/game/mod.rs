@@ -8,18 +8,18 @@ use resources::{Resource, Resources};
 
 use crate::graphics::{ArcTexture, GraphicsContext};
 
-use self::chart::{Chart, ChartData};
+use self::{
+    chart::{Chart, ChartData},
+    graphics::atlas::Atlas,
+};
 
 pub mod chart;
 pub mod graphics;
 pub mod screen;
 
 pub struct GameResources {
-    pub tinted_circle: ArcTexture,
-    pub overlay_circle: ArcTexture,
-    pub approach_circle: ArcTexture,
+    pub hitobject_atlas: Atlas<String>,
     pub playfield: ArcTexture,
-    pub slider_track: ArcTexture,
 }
 
 struct Song(pub InstanceHandle);
@@ -29,7 +29,7 @@ pub struct ChartProgress {
 }
 
 pub struct GameContext {
-    pub gfx: GraphicsContext,
+    pub gfx: Arc<GraphicsContext>,
     pub audio: Mutex<RefCell<AudioManager>>,
     pub resources: Resources,
 }
@@ -44,7 +44,7 @@ impl GameContext {
         resources.insert::<Option<Arc<GameResources>>>(None);
         GameContext {
             resources,
-            gfx,
+            gfx: Arc::new(gfx),
             audio: Mutex::new(RefCell::new(audio)),
         }
     }

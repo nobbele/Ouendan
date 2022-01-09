@@ -3,14 +3,14 @@ use slotmap::SlotMap;
 
 use crate::graphics;
 
-use super::{Buffer, GraphicsContext};
+use super::GraphicsContext;
 
 pub type SpriteIdx = slotmap::DefaultKey;
 
 pub struct SpriteBatch {
     pub texture: graphics::ArcTexture,
     pub instance_buffer: wgpu::Buffer,
-    pub view_buffer: Buffer,
+    pub view_buffer: graphics::Buffer,
     pub view_binding: wgpu::BindGroup,
 
     view: graphics::Transform,
@@ -22,7 +22,7 @@ impl SpriteBatch {
     pub fn new(gfx: &GraphicsContext, texture: graphics::ArcTexture, capacity: usize) -> Self {
         let instance_buffer = gfx.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: (std::mem::size_of::<cgmath::Matrix4<f32>>() * capacity) as u64,
+            size: graphics::transform::RawTransform::packed_size() * capacity as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -87,7 +87,7 @@ impl SpriteBatch {
         for (idx, transform) in self.into_iter().enumerate() {
             gfx.queue.write_buffer(
                 &self.instance_buffer,
-                (std::mem::size_of::<cgmath::Matrix4<f32>>() * idx) as u64,
+                graphics::transform::RawTransform::packed_size() * idx as u64,
                 transform.as_matrix().as_std140().as_bytes(),
             );
         }

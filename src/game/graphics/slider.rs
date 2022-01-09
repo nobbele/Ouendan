@@ -4,6 +4,8 @@ use crate::{
     math,
 };
 
+use super::atlas::Atlas;
+
 pub struct Slider {
     track: graphics::ArcTexture,
     vertex: graphics::Buffer,
@@ -21,7 +23,8 @@ impl Slider {
         curve_type: chart::CurveType,
         initial_position: cgmath::Vector2<f32>,
         control_points: &[cgmath::Vector2<f32>],
-        track: graphics::ArcTexture,
+        atlas: &Atlas<String>,
+        entry: &str,
     ) -> Self {
         let spline = osu_utils::Spline::from_control(
             match curve_type {
@@ -99,6 +102,7 @@ impl Slider {
             layer: 0,
             scale: cgmath::vec2(1.0, 1.0),
             rotation: cgmath::Rad(0.0),
+            source: atlas.sub_textures[entry].cast(),
         };
         let view_buffer = graphics::Buffer::new_with_alignable_data(
             gfx,
@@ -115,7 +119,7 @@ impl Slider {
         });
 
         Slider {
-            track,
+            track: atlas.texture.clone(),
             vertex: vertex_buffer,
             index: index_buffer,
             instance: instance_buffer,

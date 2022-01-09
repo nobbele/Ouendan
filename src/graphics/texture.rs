@@ -1,11 +1,9 @@
-use std::sync::Arc;
-
 use image::GenericImageView;
 use wgpu::util::DeviceExt;
 
 use crate::graphics;
 
-use super::{ArcTexture, GraphicsContext};
+use super::GraphicsContext;
 
 pub struct RawTextureData {
     pub data: Vec<u8>,
@@ -33,30 +31,7 @@ pub struct RawTexture {
 }
 
 impl RawTexture {
-    pub fn new(
-        gfx: &GraphicsContext,
-        data: &[u8],
-        size: cgmath::Vector2<u32>,
-        format: wgpu::TextureFormat,
-    ) -> Self {
-        let texture_size = wgpu::Extent3d {
-            width: size.x,
-            height: size.y,
-            depth_or_array_layers: 1,
-        };
-        let texture = gfx.device.create_texture_with_data(
-            &gfx.queue,
-            &wgpu::TextureDescriptor {
-                label: None,
-                size: texture_size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            },
-            data,
-        );
+    pub fn from_wgpu_texture(gfx: &GraphicsContext, texture: wgpu::Texture) -> Self {
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = gfx.device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -90,6 +65,33 @@ impl RawTexture {
             bind_group,
         }
     }
+    pub fn from_rgba8(
+        gfx: &GraphicsContext,
+        data: &[u8],
+        size: cgmath::Vector2<u32>,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        let texture_size = wgpu::Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        };
+        let texture = gfx.device.create_texture_with_data(
+            &gfx.queue,
+            &wgpu::TextureDescriptor {
+                label: None,
+                size: texture_size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            },
+            data,
+        );
+
+        RawTexture::from_wgpu_texture(gfx, texture)
+    }
 }
 
 pub struct Texture {
@@ -102,15 +104,12 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(
+    pub fn from_raw_texture(
         gfx: &GraphicsContext,
-        image_data: &[u8],
-        format: wgpu::TextureFormat,
-    ) -> ArcTexture {
-        let tex_data = RawTextureData::from_raw_image(image_data);
-        let raw = RawTexture::new(gfx, &tex_data.data, tex_data.size, format);
-
-        let half_extent = tex_data.size.cast::<f32>().unwrap() / 2.0;
+        raw: RawTexture,
+        size: cgmath::Vector2<u32>,
+    ) -> Self {
+        let half_extent = size.cast::<f32>().unwrap() / 2.0;
         let vertex_buffer = graphics::Buffer::new_with_data(
             gfx,
             &[
@@ -139,11 +138,18 @@ impl Texture {
             wgpu::BufferUsages::INDEX,
         );
 
-        Arc::new(Texture {
+        Texture {
             raw,
-            size: cgmath::vec2(tex_data.size.x, tex_data.size.y),
+            size,
             vertex_buffer,
             index_buffer,
-        })
+        }
+    }
+
+    pub fn new(gfx: &GraphicsContext, image_data: &[u8], format: wgpu::TextureFormat) -> Self {
+        let tex_data = RawTextureData::from_raw_image(image_data);
+        let raw = RawTexture::from_rgba8(gfx, &tex_data.data, tex_data.size, format);
+
+        Texture::from_raw_texture(gfx, raw, tex_data.size)
     }
 }

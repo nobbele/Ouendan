@@ -1,32 +1,32 @@
-use std::num::NonZeroU32;
+use std::{collections::HashMap, hash::Hash, num::NonZeroU32};
 
-use crate::graphics::{texture::RawTextureData, ArcTexture, GraphicsContext};
+use crate::{
+    graphics::{self, texture::RawTextureData, GraphicsContext},
+    Rect,
+};
 use atlas_packer::PackSolver;
 
-pub struct AtlasSubTexture {
-    position: cgmath::Vector2<f32>,
-    size: cgmath::Vector2<f32>,
-    atlas: ArcTexture,
+pub struct Atlas<T> {
+    pub texture: graphics::ArcTexture,
+    pub sub_textures: HashMap<T, Rect<f32>>,
 }
 
-pub struct Atlas {}
-
-impl Atlas {
+impl<T> Atlas<T>
+where
+    T: Clone,
+    <T as ToOwned>::Owned: Hash + Eq,
+{
     pub fn new(
         gfx: &GraphicsContext,
-        textures: &[&RawTextureData],
+        textures: &[(&T, &RawTextureData)],
         texture_format: wgpu::TextureFormat,
     ) -> Self {
         let rects = textures
             .iter()
-            .map(|tex| tex.size.into())
+            .map(|tex| tex.1.size.into())
             .collect::<Vec<_>>();
         let solver = PackSolver::new(&rects);
         let pack = solver.solve();
-        let texture_dimension = cgmath::vec2(
-            pack.dimensions.x.next_power_of_two(),
-            pack.dimensions.y.next_power_of_two(),
-        );
         let texture = gfx.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
@@ -40,12 +40,17 @@ impl Atlas {
             format: texture_format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         });
-        for (idx, &raw) in textures.iter().enumerate() {
+        for (idx, &(_, raw)) in textures.iter().enumerate() {
+            let pos = pack.output[pack.output.iter().position(|el| el.1 == idx).unwrap()].0;
             gfx.queue.write_texture(
                 wgpu::ImageCopyTexture {
                     texture: &texture,
-                    mip_level: 1,
-                    origin: wgpu::Origin3d::default(),
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: pos.x,
+                        y: pos.y,
+                        z: 0,
+                    },
                     aspect: wgpu::TextureAspect::All,
                 },
                 &raw.data,
@@ -62,6 +67,31 @@ impl Atlas {
             )
         }
 
-        Atlas {}
+        Atlas {
+            texture: std::sync::Arc::new(graphics::Texture::from_raw_texture(
+                gfx,
+                graphics::texture::RawTexture::from_wgpu_texture(gfx, texture),
+                cgmath::vec2(pack.dimensions.x, pack.dimensions.y),
+            )),
+            sub_textures: pack
+                .output
+                .into_iter()
+                .map(|(pos, idx)| {
+                    (
+                        textures[idx].0.to_owned(),
+                        Rect {
+                            position: cgmath::vec2(
+                                pos.x as f32 / pack.dimensions.x as f32,
+                                pos.y as f32 / pack.dimensions.y as f32,
+                            ),
+                            size: cgmath::vec2(
+                                rects[idx].x as f32 / pack.dimensions.x as f32,
+                                rects[idx].y as f32 / pack.dimensions.y as f32,
+                            ),
+                        },
+                    )
+                })
+                .collect(),
+        }
     }
 }

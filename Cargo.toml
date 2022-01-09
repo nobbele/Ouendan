@@ -27,3 +27,4 @@ wgpu_glyph = "0.16.0"
 futures = "0.3.19"
 lyon = "0.17.10"
 atlas-packer = { path = "atlas-packer" }
+num-traits = "0.2.14"

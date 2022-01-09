@@ -1,14 +1,15 @@
 use osu_types::SpecificHitObject;
+use slotmap::SlotMap;
 
 use crate::{
     game::{
         chart::{self, Chart, ChartData},
-        graphics::{hitcircle_batch::HitCircleBatch, slider},
+        graphics::slider,
         ChartProgress, GameContext,
     },
-    graphics::{Renderable, SpriteBatch, Transform},
+    graphics::{Renderable, Sprite, Transform},
     job::{spawn_job, JobHandle},
-    math,
+    math, Rect,
 };
 
 use super::{Screen, Updatable};
@@ -18,11 +19,30 @@ pub struct PlayingResources {
     beatmap: osu_parser::Beatmap,
 }
 
-pub struct PlayingScreen {
-    hitcircle_batch: HitCircleBatch,
-    playfield_batch: SpriteBatch,
+#[derive(Clone, Copy)]
+pub enum VisibleHitObjectRef {
+    Circle {
+        tinted: slotmap::DefaultKey,
+        overlay: slotmap::DefaultKey,
+        approach: slotmap::DefaultKey,
+    },
+    Slider(slotmap::DefaultKey),
+}
 
-    visible_sliders: Vec<(usize, slider::Slider)>,
+#[derive(Clone, Copy)]
+pub struct VisibleHitObject {
+    hitobject_index: usize,
+    refs: VisibleHitObjectRef,
+}
+
+pub struct PlayingScreen {
+    playfield: Sprite,
+    tinted: SlotMap<slotmap::DefaultKey, Sprite>,
+    overlay: SlotMap<slotmap::DefaultKey, Sprite>,
+    slider_bodies: SlotMap<slotmap::DefaultKey, slider::Slider>,
+    approach: SlotMap<slotmap::DefaultKey, Sprite>,
+
+    visible_objects: SlotMap<slotmap::DefaultKey, VisibleHitObject>,
 }
 
 impl Screen for PlayingScreen {
@@ -137,50 +157,39 @@ impl Screen for PlayingScreen {
             ctx.chart().as_ref().unwrap().title.clone()
         );
 
-        let mut hitcircle_batch = HitCircleBatch::new(
+        let playfield = Sprite::new(
             &ctx.gfx,
-            game_resources.tinted_circle.clone(),
-            game_resources.overlay_circle.clone(),
-            game_resources.approach_circle.clone(),
-            64,
+            game_resources.playfield.clone(),
+            Transform {
+                position: cgmath::vec2(
+                    ctx.gfx.dimensions.x as f32 / 2.0,
+                    ctx.gfx.dimensions.y as f32 / 2.0,
+                ),
+                layer: 0,
+                scale: cgmath::vec2(
+                    ctx.gfx.dimensions.x as f32 / 2732.0,
+                    ctx.gfx.dimensions.y as f32 / 1572.0,
+                ),
+                rotation: cgmath::Rad(0.0),
+                source: Rect::new(0.0, 0.0, 1.0, 1.0),
+            },
         );
-        hitcircle_batch.set_view(Transform {
-            position: cgmath::vec2(
-                ctx.gfx.dimensions.x as f32 / 2.0 - 640.0 / 2.0,
-                ctx.gfx.dimensions.y as f32 / 2.0 - 480.0 / 2.0,
-            ),
-            layer: 0,
-            scale: cgmath::vec2(1.0, 1.0),
-            rotation: cgmath::Rad(0.0),
-        });
-
-        let mut playfield_batch = SpriteBatch::new(&ctx.gfx, game_resources.playfield.clone(), 1);
-        *playfield_batch.get_view_mut() = Transform {
-            position: cgmath::vec2(
-                ctx.gfx.dimensions.x as f32 / 2.0,
-                ctx.gfx.dimensions.y as f32 / 2.0,
-            ),
-            layer: 0,
-            scale: cgmath::vec2(
-                ctx.gfx.dimensions.x as f32 / 2732.0,
-                ctx.gfx.dimensions.y as f32 / 1572.0,
-            ),
-            rotation: cgmath::Rad(0.0),
-        };
-        let _playfield_entry = playfield_batch.insert(Transform::default());
 
         PlayingScreen {
-            hitcircle_batch,
-            playfield_batch,
+            playfield,
 
-            visible_sliders: Vec::new(),
+            tinted: SlotMap::new(),
+            overlay: SlotMap::new(),
+            slider_bodies: SlotMap::new(),
+            approach: SlotMap::new(),
+
+            visible_objects: SlotMap::new(),
         }
     }
 }
 
 impl Updatable for PlayingScreen {
     fn update(&mut self, ctx: &GameContext) {
-        let gfx = &ctx.gfx;
         let song = ctx.song();
         let chart = ctx.chart();
         let chart_data = ctx.chart_data();
@@ -195,7 +204,7 @@ impl Updatable for PlayingScreen {
 
         let song_position = song.position() as f32;
 
-        let mut display_objects = chart_data.objects[chart_progress.passed_index..]
+        let display_objects = chart_data.objects[chart_progress.passed_index..]
             .iter()
             .enumerate()
             .skip_while(|(_, obj)| {
@@ -208,112 +217,138 @@ impl Updatable for PlayingScreen {
 
         let mut to_remove = vec![];
 
-        for entry in &self.hitcircle_batch.keys {
-            match display_objects.binary_search(&entry.index) {
-                Ok(idx) => {
-                    display_objects.remove(idx);
-                }
-                Err(_) => {
-                    to_remove.push(*entry);
-                    continue;
-                }
+        for (idx, visible_hitobject) in self.visible_objects.iter() {
+            if !display_objects.contains(&visible_hitobject.hitobject_index) {
+                to_remove.push(idx);
+                continue;
             }
-
-            let approach_trans = self
-                .hitcircle_batch
-                .approach
-                .get_mut(entry.approach)
-                .unwrap();
-            let hitobject = &chart_data.objects[entry.index];
-            let scale = math::clamped_remap(
-                hitobject.time - chart.modifiers.approach_seconds(),
-                hitobject.time,
-                1.0,
-                0.25,
-                song_position,
-            );
-            approach_trans.scale.x = scale;
-            approach_trans.scale.y = scale;
-            approach_trans.layer = 1000 + entry.index as u32;
-
-            let tinted_trans = self.hitcircle_batch.tinted.get_mut(entry.tinted).unwrap();
-            tinted_trans.layer = entry.index as u32;
-
-            let overlay_trans = self.hitcircle_batch.overlay.get_mut(entry.overlay).unwrap();
-            overlay_trans.layer = entry.index as u32;
+            let hitobject = &chart_data.objects[visible_hitobject.hitobject_index];
+            if let VisibleHitObjectRef::Circle { approach, .. } = visible_hitobject.refs {
+                let scale = math::clamped_remap(
+                    hitobject.time - chart.modifiers.approach_seconds(),
+                    hitobject.time,
+                    0.5,
+                    0.125,
+                    song_position,
+                );
+                self.approach[approach].get_transform_mut().scale = cgmath::vec2(scale, scale);
+                self.approach[approach].update(&ctx.gfx);
+            }
         }
 
-        for (object_index, slider_entry) in &self.visible_sliders {
-            gfx.queue.write_buffer(
-                &slider_entry.instance.buffer,
-                0,
-                crevice::std140::Std140::as_bytes(&crevice::std140::AsStd140::as_std140(
-                    &Transform {
-                        layer: *object_index as u32,
-                        ..Default::default()
-                    }
-                    .as_matrix(),
-                )),
-            );
-        }
-
-        for entry in to_remove {
-            let hitobject = &chart_data.objects[entry.index];
-            match hitobject.data {
-                chart::HitObjectData::Circle => {
-                    self.hitcircle_batch.remove(entry);
+        for idx in to_remove {
+            let visible_hitobject = self.visible_objects.remove(idx).unwrap();
+            match visible_hitobject.refs {
+                VisibleHitObjectRef::Circle {
+                    tinted,
+                    overlay,
+                    approach,
+                } => {
+                    self.tinted.remove(tinted);
+                    self.overlay.remove(overlay);
+                    self.approach.remove(approach);
                 }
-                chart::HitObjectData::Slider(_) => {
-                    self.hitcircle_batch.remove(entry);
-                    match self
-                        .visible_sliders
-                        .binary_search_by_key(&entry.index, |s| s.0)
-                    {
-                        Ok(idx) => {
-                            self.visible_sliders.remove(idx);
-                        }
-                        Err(_) => {}
-                    }
+                VisibleHitObjectRef::Slider(slider) => {
+                    self.slider_bodies.remove(slider);
                 }
             }
         }
+
+        let game_resources = ctx.game_resources();
 
         for display_object in display_objects {
             let hitobject = &chart_data.objects[display_object];
+            let trans = Transform {
+                position: cgmath::vec2(hitobject.position.x + 80.0, hitobject.position.y + 65.0),
+                layer: 0,
+                scale: cgmath::vec2(0.125, 0.125),
+                rotation: cgmath::Rad(0.0),
+                source: Rect::new(0.0, 0.0, 1.0, 1.0),
+            };
+            let tinted = self.tinted.insert(Sprite::new(
+                &ctx.gfx,
+                game_resources.hitobject_atlas.texture.clone(),
+                Transform {
+                    source: game_resources.hitobject_atlas.sub_textures["tinted"].cast(),
+                    ..trans
+                },
+            ));
+            let overlay = self.overlay.insert(Sprite::new(
+                &ctx.gfx,
+                game_resources.hitobject_atlas.texture.clone(),
+                Transform {
+                    source: game_resources.hitobject_atlas.sub_textures["overlay"].cast(),
+                    ..trans
+                },
+            ));
+            let approach = self.approach.insert(Sprite::new(
+                &ctx.gfx,
+                game_resources.hitobject_atlas.texture.clone(),
+                Transform {
+                    source: game_resources.hitobject_atlas.sub_textures["approach"].cast(),
+                    ..trans
+                },
+            ));
+            self.visible_objects.insert(VisibleHitObject {
+                hitobject_index: display_object,
+                refs: VisibleHitObjectRef::Circle {
+                    tinted,
+                    overlay,
+                    approach,
+                },
+            });
             match &hitobject.data {
-                chart::HitObjectData::Circle => {
-                    self.hitcircle_batch
-                        .insert(hitobject.position, display_object);
-                }
+                chart::HitObjectData::Circle => {}
                 chart::HitObjectData::Slider(slider) => {
-                    self.hitcircle_batch
-                        .insert(hitobject.position, display_object);
-                    self.visible_sliders.push((
-                        display_object,
-                        slider::Slider::new(
-                            gfx,
-                            slider.curve_type,
-                            hitobject.position,
-                            &slider.control_points,
-                            ctx.game_resources().slider_track.clone(),
-                        ),
+                    let slider = self.slider_bodies.insert(slider::Slider::new(
+                        &ctx.gfx,
+                        slider.curve_type,
+                        hitobject.position,
+                        &slider.control_points,
+                        &game_resources.hitobject_atlas,
+                        "track",
                     ));
+                    self.visible_objects.insert(VisibleHitObject {
+                        hitobject_index: display_object,
+                        refs: VisibleHitObjectRef::Slider(slider),
+                    });
                 }
             }
         }
-
-        self.hitcircle_batch.update(ctx);
-        self.playfield_batch.update(&ctx.gfx);
     }
 }
 
 impl Renderable for PlayingScreen {
     fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
-        for (_, slider) in &self.visible_sliders {
-            slider.render(pass);
+        for visible_hitobject in self.visible_objects.values().copied() {
+            match visible_hitobject.refs {
+                VisibleHitObjectRef::Circle {
+                    tinted,
+                    overlay,
+                    approach: _,
+                } => {
+                    self.tinted[tinted].render(pass);
+                    self.overlay[overlay].render(pass);
+                }
+                VisibleHitObjectRef::Slider(slider) => {
+                    self.slider_bodies[slider].render(pass);
+                }
+            }
         }
 
-        self.hitcircle_batch.render(pass);
-        self.playfield_batch.render(pass);
+        for visible_hitobject in self.visible_objects.values().copied() {
+            match visible_hitobject.refs {
+                VisibleHitObjectRef::Circle {
+                    tinted: _,
+                    overlay: _,
+                    approach,
+                } => {
+                    self.approach[approach].render(pass);
+                }
+                VisibleHitObjectRef::Slider(_) => {}
+            }
+        }
+
+        self.playfield.render(pass);
     }
 }

@@ -1,3 +1,8 @@
+use std::sync::Arc;
+
+use crate::graphics;
+use crevice::std140::{AsStd140, Std140};
+use wgpu::util::DeviceExt;
 use winit::window::Window;
 
 pub struct Context {
@@ -8,6 +13,9 @@ pub struct Context {
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
     pub proj_bind_group_layout: wgpu::BindGroupLayout,
     pub view_bind_group_layout: wgpu::BindGroupLayout,
+
+    pub identity_view_buffer: Arc<wgpu::Buffer>,
+    pub identity_view_binding: Arc<wgpu::BindGroup>,
 
     pub aspect_ratio: f32,
     pub dimensions: cgmath::Vector2<u32>,
@@ -101,6 +109,23 @@ impl Context {
                 label: None,
             });
 
+        let view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: graphics::Transform::default()
+                .as_matrix()
+                .as_std140()
+                .as_bytes(),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let view_binding = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &view_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: view_buffer.as_entire_binding(),
+            }],
+            label: None,
+        });
+
         Context {
             surface,
             surface_format,
@@ -109,6 +134,8 @@ impl Context {
             texture_bind_group_layout,
             proj_bind_group_layout,
             view_bind_group_layout,
+            identity_view_buffer: Arc::new(view_buffer),
+            identity_view_binding: Arc::new(view_binding),
             aspect_ratio: inner_size.width as f32 / inner_size.height as f32,
             dimensions: cgmath::vec2(inner_size.width, inner_size.height),
         }

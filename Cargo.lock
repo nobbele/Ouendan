@@ -1786,6 +1786,7 @@ dependencies = [
  "kira",
  "log",
  "lyon",
+ "num-traits",
  "osu-parser",
  "osu-types",
  "osu-utils",

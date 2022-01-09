@@ -16,6 +16,7 @@ var<uniform> proj: ProjectionUniform;
 
 struct ProjectionUniform {
     matrix: mat4x4<f32>;
+    source: vec4<f32>;
 };
 [[group(1), binding(0)]]
 var<uniform> view: ProjectionUniform;
@@ -25,6 +26,7 @@ struct InstanceInput {
     [[location(3)]] model_matrix_1: vec4<f32>;
     [[location(4)]] model_matrix_2: vec4<f32>;
     [[location(5)]] model_matrix_3: vec4<f32>;
+    [[location(6)]] source: vec4<f32>;
 };
 
 [[stage(vertex)]]
@@ -40,7 +42,7 @@ fn vs_main(
     );
 
     var out: VertexOutput;
-    out.uv = model.uv;
+    out.uv = model.uv * instance.source.zw * view.source.zw + instance.source.xy + view.source.xy;
     out.clip_position = proj.matrix * view.matrix * model_matrix * vec4<f32>(model.position, 0.0, 1.0);
     return out;
 }
