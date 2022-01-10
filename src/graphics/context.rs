@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    cell::Cell,
+    sync::{Arc, Mutex},
+};
 
 use crate::graphics;
 use crevice::std140::{AsStd140, Std140};
@@ -11,11 +14,15 @@ pub struct Context {
     pub queue: wgpu::Queue,
     pub device: wgpu::Device,
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
-    pub proj_bind_group_layout: wgpu::BindGroupLayout,
-    pub view_bind_group_layout: wgpu::BindGroupLayout,
 
+    pub view_bind_group_layout: wgpu::BindGroupLayout,
     pub identity_view_buffer: Arc<wgpu::Buffer>,
     pub identity_view_binding: Arc<wgpu::BindGroup>,
+
+    pub proj_bind_group_layout: wgpu::BindGroupLayout,
+    pub proj_transform: Mutex<Cell<graphics::Transform>>,
+    pub proj_buffer: wgpu::Buffer,
+    pub proj_bind_group: wgpu::BindGroup,
 
     pub aspect_ratio: f32,
     pub dimensions: cgmath::Vector2<u32>,
@@ -126,6 +133,27 @@ impl Context {
             label: None,
         });
 
+        let dimensions = cgmath::vec2(inner_size.width, inner_size.height);
+
+        let proj_transform = graphics::Transform::default();
+
+        let mut raw = proj_transform.as_matrix();
+        raw.matrix = raw.matrix * new_projection_matrix(dimensions.cast().unwrap());
+        let proj_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: raw.as_std140().as_bytes(),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let proj_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &proj_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: proj_buffer.as_entire_binding(),
+            }],
+            label: None,
+        });
+
         Context {
             surface,
             surface_format,
@@ -136,8 +164,42 @@ impl Context {
             view_bind_group_layout,
             identity_view_buffer: Arc::new(view_buffer),
             identity_view_binding: Arc::new(view_binding),
+            proj_transform: Mutex::new(Cell::new(proj_transform)),
+            proj_buffer,
+            proj_bind_group,
             aspect_ratio: inner_size.width as f32 / inner_size.height as f32,
-            dimensions: cgmath::vec2(inner_size.width, inner_size.height),
+            dimensions,
         }
     }
+
+    pub fn set_projection_transform(&self, transform: graphics::Transform) {
+        self.proj_transform.lock().unwrap().set(transform);
+        let mut raw = self.proj_transform.lock().unwrap().get().as_matrix();
+        raw.matrix = raw.matrix * new_projection_matrix(self.dimensions.cast().unwrap());
+        self.queue
+            .write_buffer(&self.proj_buffer, 0, raw.as_std140().as_bytes());
+    }
+    pub fn get_projection_transform(&self) -> graphics::Transform {
+        self.proj_transform.lock().unwrap().get()
+    }
+}
+
+fn new_projection_matrix(dimensions: cgmath::Vector2<f32>) -> cgmath::Matrix4<f32> {
+    #[rustfmt::skip]
+    pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.0, 0.0, 0.5, 0.0,
+        0.0, 0.0, 0.5, 1.0,
+    );
+    let proj = OPENGL_TO_WGPU_MATRIX
+        * cgmath::ortho(
+            0.0,
+            dimensions.x as f32,
+            dimensions.y as f32,
+            0.0,
+            -1.0,
+            1.0,
+        );
+    proj
 }

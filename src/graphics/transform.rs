@@ -4,8 +4,8 @@ use crate::Rect;
 
 #[derive(AsStd140)]
 pub struct RawTransform {
-    matrix: cgmath::Matrix4<f32>,
-    source: cgmath::Vector4<f32>,
+    pub matrix: cgmath::Matrix4<f32>,
+    pub source: cgmath::Vector4<f32>,
 }
 
 impl RawTransform {
@@ -15,7 +15,7 @@ impl RawTransform {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Transform {
     pub position: cgmath::Vector2<f32>,
     pub layer: u32,

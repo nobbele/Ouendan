@@ -70,35 +70,6 @@ fn main() {
     );
     let pipeline = graphics::Pipeline::new(&gfx, &shader);
 
-    #[rustfmt::skip]
-    pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 0.5, 0.0,
-        0.0, 0.0, 0.5, 1.0,
-    );
-    let proj = OPENGL_TO_WGPU_MATRIX
-        * cgmath::ortho(
-            0.0,
-            gfx.dimensions.x as f32,
-            gfx.dimensions.y as f32,
-            0.0,
-            -1.0,
-            1.0,
-        );
-
-    let proj_buffer =
-        graphics::Buffer::new_with_alignable_data(&gfx, &[proj], wgpu::BufferUsages::UNIFORM);
-
-    let proj_bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &gfx.proj_bind_group_layout,
-        entries: &[wgpu::BindGroupEntry {
-            binding: 0,
-            resource: proj_buffer.buffer.as_entire_binding(),
-        }],
-        label: None,
-    });
-
     let ui_font =
         ab_glyph::FontArc::try_from_slice(include_bytes!("../Roboto-Regular.ttf")).unwrap();
     let mut glyph_brush =
@@ -288,7 +259,7 @@ fn main() {
                     });
 
                 render_pass.set_pipeline(&pipeline.pipeline);
-                render_pass.set_bind_group(0, &proj_bind_group, &[]);
+                render_pass.set_bind_group(0, &gfx.proj_bind_group, &[]);
                 match &current_screen {
                     Some(s) => match s {
                         GameScreen::Playing(s) => s.render(&mut render_pass),

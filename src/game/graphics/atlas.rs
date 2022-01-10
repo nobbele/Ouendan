@@ -13,8 +13,7 @@ pub struct Atlas<T> {
 
 impl<T> Atlas<T>
 where
-    T: Clone,
-    <T as ToOwned>::Owned: Hash + Eq,
+    T: Clone + Hash + Eq,
 {
     pub fn new(
         gfx: &GraphicsContext,
@@ -78,7 +77,7 @@ where
                 .into_iter()
                 .map(|(pos, idx)| {
                     (
-                        textures[idx].0.to_owned(),
+                        (*textures[idx].0).clone(),
                         Rect {
                             position: cgmath::vec2(
                                 pos.x as f32 / pack.dimensions.x as f32,
