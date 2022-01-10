@@ -1,16 +1,13 @@
-use std::{
-    cell::RefCell,
-    sync::{Arc, Mutex},
-};
-
-use kira::{instance::handle::InstanceHandle, manager::AudioManager};
-use resources::{Resource, Resources};
-
-use crate::graphics::{ArcTexture, GraphicsContext};
-
 use self::{
     chart::{Chart, ChartData},
     graphics::atlas::Atlas,
+};
+use kira::{instance::handle::InstanceHandle, manager::AudioManager};
+use ogfx::{ArcTexture, GraphicsContext};
+use resources::{Resource, Resources};
+use std::{
+    cell::RefCell,
+    sync::{Arc, Mutex},
 };
 
 pub mod chart;

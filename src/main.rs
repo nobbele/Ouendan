@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 
 use futures::task::SpawnExt;
-use num_traits::NumCast;
 use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text};
 use winit::{
     event_loop::{ControlFlow, EventLoop},
@@ -15,60 +14,41 @@ use crate::{
         screen::{playing::PlayingScreen, GameLoadingResource, GameScreen, Screen, Updatable},
         GameContext, GameResources,
     },
-    graphics::Renderable,
     job::spawn_job,
 };
+use ogfx::{Buffer, Renderable, Transform};
 
 pub mod game;
-pub mod graphics;
+//pub mod graphics;
 pub mod job;
 pub mod math;
 
 pub type ArcLock<T> = std::sync::Arc<std::sync::RwLock<T>>;
 
-#[derive(Debug, Clone, Copy)]
-pub struct Rect<T> {
-    pub position: cgmath::Vector2<T>,
-    pub size: cgmath::Vector2<T>,
-}
-
-impl<T> Rect<T> {
-    pub fn new(x: T, y: T, w: T, h: T) -> Self {
-        Rect {
-            position: cgmath::vec2(x, y),
-            size: cgmath::vec2(w, h),
-        }
-    }
-    pub fn cast<U>(self) -> Rect<U>
-    where
-        T: NumCast + Copy,
-        U: NumCast + Copy,
-    {
-        Rect {
-            position: self.position.cast::<U>().unwrap(),
-            size: self.size.cast::<U>().unwrap(),
-        }
-    }
-}
-
 fn main() {
     dotenv::dotenv().ok();
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = WindowBuilder::new()
+        .with_inner_size(winit::dpi::LogicalSize {
+            width: 1024,
+            height: 576,
+        })
+        .build(&event_loop)
+        .unwrap();
 
     let ctx = std::sync::Arc::new(GameContext::new(
-        graphics::context::Context::new(&window),
+        ogfx::context::Context::new(&window),
         kira::manager::AudioManager::new(kira::manager::AudioManagerSettings::default()).unwrap(),
     ));
     let gfx = &ctx.gfx;
 
-    let shader = graphics::Shader::new(
+    let shader = ogfx::Shader::new(
         &gfx,
-        include_str!("graphics/shaders/shader.wgsl"),
+        include_str!("../ogfx/src/shaders/shader.wgsl"),
         "vs_main",
         "fs_main",
     );
-    let pipeline = graphics::Pipeline::new(&gfx, &shader);
+    let pipeline = ogfx::Pipeline::new(&gfx, &shader);
 
     let ui_font =
         ab_glyph::FontArc::try_from_slice(include_bytes!("../Roboto-Regular.ttf")).unwrap();
@@ -89,7 +69,7 @@ fn main() {
 
             let gfx = &ctx.gfx;
 
-            let playfield = graphics::Texture::new(
+            let playfield = ogfx::Texture::new(
                 &gfx,
                 include_bytes!("../resources/ui/playfield.png"),
                 wgpu::TextureFormat::Rgba8Unorm,
@@ -100,25 +80,25 @@ fn main() {
             let mut map = HashMap::new();
             map.insert(
                 "tinted".to_owned(),
-                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                ogfx::texture::RawTextureData::from_raw_image(include_bytes!(
                     "../resources/circle/tinted.png"
                 )),
             );
             map.insert(
                 "overlay".to_owned(),
-                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                ogfx::texture::RawTextureData::from_raw_image(include_bytes!(
                     "../resources/circle/overlay.png"
                 )),
             );
             map.insert(
                 "track".to_owned(),
-                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                ogfx::texture::RawTextureData::from_raw_image(include_bytes!(
                     "../resources/circle/track.png"
                 )),
             );
             map.insert(
                 "approach".to_owned(),
-                graphics::texture::RawTextureData::from_raw_image(include_bytes!(
+                ogfx::texture::RawTextureData::from_raw_image(include_bytes!(
                     "../resources/circle/approach.png"
                 )),
             );
@@ -181,6 +161,21 @@ fn main() {
 
         (texture, view, sampler)
     };*/
+
+    let proj_buffer = Buffer::new_with_alignable_data(
+        gfx,
+        &[gfx.new_projection_transform(Transform::default())],
+        wgpu::BufferUsages::UNIFORM,
+    );
+
+    let proj_bind_group = gfx.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        layout: &gfx.proj_bind_group_layout,
+        entries: &[wgpu::BindGroupEntry {
+            binding: 0,
+            resource: proj_buffer.buffer.as_entire_binding(),
+        }],
+        label: None,
+    });
 
     event_loop.run(move |event, _target, control_flow| match event {
         winit::event::Event::WindowEvent { event, .. } => match event {
@@ -259,13 +254,15 @@ fn main() {
                     });
 
                 render_pass.set_pipeline(&pipeline.pipeline);
-                render_pass.set_bind_group(0, &gfx.proj_bind_group, &[]);
-                match &current_screen {
-                    Some(s) => match s {
-                        GameScreen::Playing(s) => s.render(&mut render_pass),
-                    },
-                    None => {}
-                }
+                let rctx = ogfx::context::RenderContext::new();
+                rctx.with_initial_projection(&proj_bind_group, &mut render_pass, |pass| {
+                    match &current_screen {
+                        Some(s) => match s {
+                            GameScreen::Playing(s) => s.render(&rctx, pass),
+                        },
+                        None => {}
+                    }
+                });
             }
 
             if current_screen.is_none() {

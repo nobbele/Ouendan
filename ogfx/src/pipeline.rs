@@ -1,6 +1,4 @@
-use super::{GraphicsContext, Shader};
-use crate::graphics;
-use wgpu::{PipelineLayoutDescriptor, RenderPipelineDescriptor};
+use crate::{instance_matrix_desc, GraphicsContext, Shader, Vertex};
 
 pub struct Pipeline {
     pub pipeline: wgpu::RenderPipeline,
@@ -10,7 +8,7 @@ impl Pipeline {
     pub fn new(gfx: &GraphicsContext, shader: &Shader) -> Self {
         let layout = gfx
             .device
-            .create_pipeline_layout(&PipelineLayoutDescriptor {
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
                 bind_group_layouts: &[
                     &gfx.proj_bind_group_layout,
@@ -21,16 +19,13 @@ impl Pipeline {
             });
         let pipeline = gfx
             .device
-            .create_render_pipeline(&RenderPipelineDescriptor {
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: None,
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &shader.module,
                     entry_point: shader.vs_name,
-                    buffers: &[
-                        graphics::Vertex::buffer_layout(),
-                        graphics::instance_matrix_desc(),
-                    ],
+                    buffers: &[Vertex::buffer_layout(), instance_matrix_desc()],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader.module,

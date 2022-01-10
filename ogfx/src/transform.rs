@@ -1,6 +1,5 @@
-use crevice::std140::AsStd140;
-
 use crate::Rect;
+use crevice::std140::AsStd140;
 
 #[derive(AsStd140)]
 pub struct RawTransform {

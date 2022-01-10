@@ -1,34 +1,32 @@
 use crevice::std140::{AsStd140, Std140};
 use slotmap::SlotMap;
 
-use crate::graphics;
-
-use super::GraphicsContext;
+use crate::{transform, ArcTexture, Buffer, GraphicsContext, RenderContext, Renderable, Transform};
 
 pub type SpriteIdx = slotmap::DefaultKey;
 
 pub struct SpriteBatch {
-    pub texture: graphics::ArcTexture,
+    pub texture: ArcTexture,
     pub instance_buffer: wgpu::Buffer,
-    pub view_buffer: graphics::Buffer,
+    pub view_buffer: Buffer,
     pub view_binding: wgpu::BindGroup,
 
-    view: graphics::Transform,
-    transforms: SlotMap<SpriteIdx, graphics::Transform>,
+    view: Transform,
+    transforms: SlotMap<SpriteIdx, Transform>,
     dirty: bool,
 }
 
 impl SpriteBatch {
-    pub fn new(gfx: &GraphicsContext, texture: graphics::ArcTexture, capacity: usize) -> Self {
+    pub fn new(gfx: &GraphicsContext, texture: ArcTexture, capacity: usize) -> Self {
         let instance_buffer = gfx.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: graphics::transform::RawTransform::packed_size() * capacity as u64,
+            size: transform::RawTransform::packed_size() * capacity as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
-        let view = graphics::Transform::default();
-        let view_buffer = graphics::Buffer::new_with_alignable_data(
+        let view = Transform::default();
+        let view_buffer = Buffer::new_with_alignable_data(
             gfx,
             &[view.as_matrix()],
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -54,7 +52,7 @@ impl SpriteBatch {
         }
     }
 
-    pub fn get_view_mut(&mut self) -> &mut graphics::Transform {
+    pub fn get_view_mut(&mut self) -> &mut Transform {
         self.dirty = true;
         &mut self.view
     }
@@ -64,16 +62,16 @@ impl SpriteBatch {
         self.transforms.remove(key);
     }
 
-    pub fn insert(&mut self, transform: graphics::Transform) -> SpriteIdx {
+    pub fn insert(&mut self, transform: Transform) -> SpriteIdx {
         self.dirty = true;
         self.transforms.insert(transform)
     }
 
-    pub fn get(&self, key: SpriteIdx) -> Option<&graphics::Transform> {
+    pub fn get(&self, key: SpriteIdx) -> Option<&Transform> {
         self.transforms.get(key)
     }
 
-    pub fn get_mut(&mut self, key: SpriteIdx) -> Option<&mut graphics::Transform> {
+    pub fn get_mut(&mut self, key: SpriteIdx) -> Option<&mut Transform> {
         self.dirty = true;
         self.transforms.get_mut(key)
     }
@@ -87,7 +85,7 @@ impl SpriteBatch {
         for (idx, transform) in self.into_iter().enumerate() {
             gfx.queue.write_buffer(
                 &self.instance_buffer,
-                graphics::transform::RawTransform::packed_size() * idx as u64,
+                transform::RawTransform::packed_size() * idx as u64,
                 transform.as_matrix().as_std140().as_bytes(),
             );
         }
@@ -102,17 +100,21 @@ impl SpriteBatch {
 }
 
 impl<'a> IntoIterator for &'a SpriteBatch {
-    type Item = &'a graphics::Transform;
+    type Item = &'a Transform;
 
-    type IntoIter = slotmap::basic::Values<'a, SpriteIdx, graphics::Transform>;
+    type IntoIter = slotmap::basic::Values<'a, SpriteIdx, Transform>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.transforms.values()
     }
 }
 
-impl graphics::Renderable for SpriteBatch {
-    fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
+impl Renderable for SpriteBatch {
+    fn render<'data>(
+        &'data self,
+        _rctx: &RenderContext<'data>,
+        pass: &mut wgpu::RenderPass<'data>,
+    ) {
         pass.set_bind_group(1, &self.view_binding, &[]);
         pass.set_bind_group(2, &self.texture.raw.bind_group, &[]);
         pass.set_vertex_buffer(0, self.texture.vertex_buffer.buffer.slice(..));

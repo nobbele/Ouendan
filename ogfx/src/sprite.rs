@@ -2,12 +2,12 @@ use crevice::std140::{AsStd140, Std140};
 use wgpu::util::DeviceExt;
 
 use super::{GraphicsContext, Renderable};
-use crate::graphics;
+use crate::{ArcTexture, RenderContext, Transform};
 use std::sync::Arc;
 
 pub struct Sprite {
-    texture: graphics::ArcTexture,
-    transform: graphics::Transform,
+    texture: ArcTexture,
+    transform: Transform,
     instance_buffer: wgpu::Buffer,
 
     view_binding: Arc<wgpu::BindGroup>,
@@ -16,11 +16,7 @@ pub struct Sprite {
 }
 
 impl Sprite {
-    pub fn new(
-        gfx: &GraphicsContext,
-        texture: graphics::ArcTexture,
-        transform: graphics::Transform,
-    ) -> Self {
+    pub fn new(gfx: &GraphicsContext, texture: ArcTexture, transform: Transform) -> Self {
         let instance_buffer = gfx
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -40,7 +36,7 @@ impl Sprite {
         }
     }
 
-    pub fn get_transform_mut(&mut self) -> &mut graphics::Transform {
+    pub fn get_transform_mut(&mut self) -> &mut Transform {
         self.dirty = true;
         &mut self.transform
     }
@@ -58,7 +54,11 @@ impl Sprite {
 }
 
 impl Renderable for Sprite {
-    fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
+    fn render<'data>(
+        &'data self,
+        _rctx: &RenderContext<'data>,
+        pass: &mut wgpu::RenderPass<'data>,
+    ) {
         pass.set_bind_group(1, &self.view_binding, &[]);
         pass.set_bind_group(2, &self.texture.raw.bind_group, &[]);
         pass.set_vertex_buffer(0, self.texture.vertex_buffer.buffer.slice(..));

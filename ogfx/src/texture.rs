@@ -1,9 +1,7 @@
+use super::GraphicsContext;
+use crate::{Buffer, Vertex};
 use image::GenericImageView;
 use wgpu::util::DeviceExt;
-
-use crate::graphics;
-
-use super::GraphicsContext;
 
 pub struct RawTextureData {
     pub data: Vec<u8>,
@@ -99,8 +97,8 @@ pub struct Texture {
     pub size: cgmath::Vector2<u32>,
 
     // Could be reused but would just be annoying to deal with
-    pub vertex_buffer: graphics::Buffer,
-    pub index_buffer: graphics::Buffer,
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
 }
 
 impl Texture {
@@ -110,33 +108,30 @@ impl Texture {
         size: cgmath::Vector2<u32>,
     ) -> Self {
         let half_extent = size.cast::<f32>().unwrap() / 2.0;
-        let vertex_buffer = graphics::Buffer::new_with_data(
+        let vertex_buffer = Buffer::new_with_data(
             gfx,
             &[
-                graphics::Vertex {
+                Vertex {
                     position: cgmath::vec2(-half_extent.x, half_extent.y),
                     uv: cgmath::vec2(0.0, 1.0),
                 },
-                graphics::Vertex {
+                Vertex {
                     position: cgmath::vec2(-half_extent.x, -half_extent.y),
                     uv: cgmath::vec2(0.0, 0.0),
                 },
-                graphics::Vertex {
+                Vertex {
                     position: cgmath::vec2(half_extent.x, -half_extent.y),
                     uv: cgmath::vec2(1.0, 0.0),
                 },
-                graphics::Vertex {
+                Vertex {
                     position: cgmath::vec2(half_extent.x, half_extent.y),
                     uv: cgmath::vec2(1.0, 1.0),
                 },
             ],
             wgpu::BufferUsages::VERTEX,
         );
-        let index_buffer = graphics::Buffer::new_with_data::<u16>(
-            gfx,
-            &[0, 1, 2, 2, 3, 0],
-            wgpu::BufferUsages::INDEX,
-        );
+        let index_buffer =
+            Buffer::new_with_data::<u16>(gfx, &[0, 1, 2, 2, 3, 0], wgpu::BufferUsages::INDEX);
 
         Texture {
             raw,

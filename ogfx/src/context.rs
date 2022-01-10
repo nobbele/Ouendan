@@ -1,12 +1,46 @@
-use std::{
-    cell::Cell,
-    sync::{Arc, Mutex},
-};
-
-use crate::graphics;
+use crate::{transform::RawTransform, Transform};
 use crevice::std140::{AsStd140, Std140};
+use std::{cell::RefCell, sync::Arc};
 use wgpu::util::DeviceExt;
 use winit::window::Window;
+
+pub struct RenderContext<'a> {
+    projection_stack: RefCell<Vec<&'a wgpu::BindGroup>>,
+}
+
+impl<'a> RenderContext<'a> {
+    pub fn new() -> Self {
+        RenderContext {
+            projection_stack: RefCell::new(Vec::new()),
+        }
+    }
+    pub fn with_projection(
+        &self,
+        new: &'a wgpu::BindGroup,
+        pass: &mut wgpu::RenderPass<'a>,
+        f: impl Fn(&mut wgpu::RenderPass<'a>) -> (),
+    ) {
+        assert!(self.projection_stack.borrow().len() >= 1);
+        self.projection_stack.borrow_mut().push(new);
+        pass.set_bind_group(0, new, &[]);
+        f(pass);
+        self.projection_stack.borrow_mut().pop().unwrap();
+        pass.set_bind_group(0, self.projection_stack.borrow().last().unwrap(), &[]);
+    }
+
+    pub fn with_initial_projection(
+        &self,
+        new: &'a wgpu::BindGroup,
+        pass: &mut wgpu::RenderPass<'a>,
+        f: impl Fn(&mut wgpu::RenderPass<'a>) -> (),
+    ) {
+        assert!(self.projection_stack.borrow().len() == 0);
+        self.projection_stack.borrow_mut().push(new);
+        pass.set_bind_group(0, new, &[]);
+        f(pass);
+        self.projection_stack.borrow_mut().pop().unwrap();
+    }
+}
 
 pub struct Context {
     pub surface: wgpu::Surface,
@@ -20,9 +54,6 @@ pub struct Context {
     pub identity_view_binding: Arc<wgpu::BindGroup>,
 
     pub proj_bind_group_layout: wgpu::BindGroupLayout,
-    pub proj_transform: Mutex<Cell<graphics::Transform>>,
-    pub proj_buffer: wgpu::Buffer,
-    pub proj_bind_group: wgpu::BindGroup,
 
     pub aspect_ratio: f32,
     pub dimensions: cgmath::Vector2<u32>,
@@ -118,10 +149,7 @@ impl Context {
 
         let view_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: None,
-            contents: graphics::Transform::default()
-                .as_matrix()
-                .as_std140()
-                .as_bytes(),
+            contents: Transform::default().as_matrix().as_std140().as_bytes(),
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let view_binding = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -135,25 +163,6 @@ impl Context {
 
         let dimensions = cgmath::vec2(inner_size.width, inner_size.height);
 
-        let proj_transform = graphics::Transform::default();
-
-        let mut raw = proj_transform.as_matrix();
-        raw.matrix = raw.matrix * new_projection_matrix(dimensions.cast().unwrap());
-        let proj_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: raw.as_std140().as_bytes(),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let proj_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &proj_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: proj_buffer.as_entire_binding(),
-            }],
-            label: None,
-        });
-
         Context {
             surface,
             surface_format,
@@ -164,23 +173,15 @@ impl Context {
             view_bind_group_layout,
             identity_view_buffer: Arc::new(view_buffer),
             identity_view_binding: Arc::new(view_binding),
-            proj_transform: Mutex::new(Cell::new(proj_transform)),
-            proj_buffer,
-            proj_bind_group,
             aspect_ratio: inner_size.width as f32 / inner_size.height as f32,
             dimensions,
         }
     }
 
-    pub fn set_projection_transform(&self, transform: graphics::Transform) {
-        self.proj_transform.lock().unwrap().set(transform);
-        let mut raw = self.proj_transform.lock().unwrap().get().as_matrix();
-        raw.matrix = raw.matrix * new_projection_matrix(self.dimensions.cast().unwrap());
-        self.queue
-            .write_buffer(&self.proj_buffer, 0, raw.as_std140().as_bytes());
-    }
-    pub fn get_projection_transform(&self) -> graphics::Transform {
-        self.proj_transform.lock().unwrap().get()
+    pub fn new_projection_transform(&self, transform: Transform) -> RawTransform {
+        let mut raw = transform.as_matrix();
+        raw.matrix = new_projection_matrix(self.dimensions.cast().unwrap()) * raw.matrix;
+        raw
     }
 }
 

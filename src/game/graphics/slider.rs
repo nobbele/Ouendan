@@ -1,19 +1,17 @@
-use crate::{
-    game::chart,
-    graphics::{self, GraphicsContext, Renderable},
-    math,
-};
+use ogfx::{GraphicsContext, RenderContext, Renderable};
+
+use crate::{game::chart, math};
 
 use super::atlas::Atlas;
 
 pub struct Slider {
-    track: graphics::ArcTexture,
-    vertex: graphics::Buffer,
-    index: graphics::Buffer,
+    track: ogfx::ArcTexture,
+    vertex: ogfx::Buffer,
+    index: ogfx::Buffer,
     // Temp
-    pub instance: graphics::Buffer,
+    pub instance: ogfx::Buffer,
     #[allow(dead_code)]
-    view: graphics::Buffer,
+    view: ogfx::Buffer,
     view_binding: wgpu::BindGroup,
 }
 
@@ -51,7 +49,7 @@ impl Slider {
         builder.end(false);
         let path = builder.build();
 
-        let mut geometry: lyon::lyon_tessellation::VertexBuffers<graphics::Vertex, u16> =
+        let mut geometry: lyon::lyon_tessellation::VertexBuffers<ogfx::Vertex, u16> =
             lyon::lyon_tessellation::VertexBuffers::new();
         let mut tessellator = lyon::lyon_tessellation::StrokeTessellator::new();
         {
@@ -63,12 +61,12 @@ impl Slider {
                 .tessellate_path(
                     &path,
                     &lyon::lyon_tessellation::StrokeOptions::default()
-                        .with_line_width(50.0)
+                        .with_line_width(60.0)
                         .with_start_cap(lyon::lyon_tessellation::LineCap::Round)
                         .with_end_cap(lyon::lyon_tessellation::LineCap::Round),
                     &mut lyon::lyon_tessellation::BuffersBuilder::new(
                         &mut geometry,
-                        |vertex: lyon::lyon_tessellation::StrokeVertex| graphics::Vertex {
+                        |vertex: lyon::lyon_tessellation::StrokeVertex| ogfx::Vertex {
                             position: cgmath::vec2(vertex.position().x, vertex.position().y),
                             uv: cgmath::vec2(
                                 match vertex.side() {
@@ -84,27 +82,21 @@ impl Slider {
         }
 
         let vertex_buffer =
-            graphics::Buffer::new_with_data(gfx, &geometry.vertices, wgpu::BufferUsages::VERTEX);
+            ogfx::Buffer::new_with_data(gfx, &geometry.vertices, wgpu::BufferUsages::VERTEX);
         let index_buffer =
-            graphics::Buffer::new_with_data(gfx, &geometry.indices, wgpu::BufferUsages::INDEX);
+            ogfx::Buffer::new_with_data(gfx, &geometry.indices, wgpu::BufferUsages::INDEX);
 
-        let instance_buffer = graphics::Buffer::new_with_alignable_data(
+        let instance_buffer = ogfx::Buffer::new_with_alignable_data(
             gfx,
-            &[graphics::Transform::default().as_matrix()],
+            &[ogfx::Transform::default().as_matrix()],
             wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         );
 
-        let view = graphics::Transform {
-            position: cgmath::vec2(
-                gfx.dimensions.x as f32 / 2.0 - 640.0 / 2.0,
-                gfx.dimensions.y as f32 / 2.0 - 480.0 / 2.0,
-            ),
-            layer: 0,
-            scale: cgmath::vec2(1.0, 1.0),
-            rotation: cgmath::Rad(0.0),
+        let view = ogfx::Transform {
             source: atlas.sub_textures[entry].cast(),
+            ..Default::default()
         };
-        let view_buffer = graphics::Buffer::new_with_alignable_data(
+        let view_buffer = ogfx::Buffer::new_with_alignable_data(
             gfx,
             &[view.as_matrix()],
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -130,7 +122,11 @@ impl Slider {
 }
 
 impl Renderable for Slider {
-    fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>) {
+    fn render<'data>(
+        &'data self,
+        _rctx: &RenderContext<'data>,
+        pass: &mut wgpu::RenderPass<'data>,
+    ) {
         pass.set_bind_group(1, &self.view_binding, &[]);
         pass.set_bind_group(2, &self.track.raw.bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertex.buffer.slice(..));

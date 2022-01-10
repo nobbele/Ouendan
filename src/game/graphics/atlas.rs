@@ -1,13 +1,10 @@
 use std::{collections::HashMap, hash::Hash, num::NonZeroU32};
 
-use crate::{
-    graphics::{self, texture::RawTextureData, GraphicsContext},
-    Rect,
-};
 use atlas_packer::PackSolver;
+use ogfx::{self, texture::RawTextureData, GraphicsContext, Rect};
 
 pub struct Atlas<T> {
-    pub texture: graphics::ArcTexture,
+    pub texture: ogfx::ArcTexture,
     pub sub_textures: HashMap<T, Rect<f32>>,
 }
 
@@ -67,9 +64,9 @@ where
         }
 
         Atlas {
-            texture: std::sync::Arc::new(graphics::Texture::from_raw_texture(
+            texture: std::sync::Arc::new(ogfx::Texture::from_raw_texture(
                 gfx,
-                graphics::texture::RawTexture::from_wgpu_texture(gfx, texture),
+                ogfx::texture::RawTexture::from_wgpu_texture(gfx, texture),
                 cgmath::vec2(pack.dimensions.x, pack.dimensions.y),
             )),
             sub_textures: pack

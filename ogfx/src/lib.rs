@@ -1,5 +1,8 @@
+use num_traits::NumCast;
+
 pub mod context;
 pub type GraphicsContext = context::Context;
+pub type RenderContext<'a> = context::RenderContext<'a>;
 
 pub mod pipeline;
 
@@ -27,10 +30,35 @@ pub use spritebatch::SpriteBatch;
 pub mod sprite;
 pub use sprite::Sprite;
 
-use crate::graphics::transform::RawTransform;
+use transform::RawTransform;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Rect<T> {
+    pub position: cgmath::Vector2<T>,
+    pub size: cgmath::Vector2<T>,
+}
+
+impl<T> Rect<T> {
+    pub fn new(x: T, y: T, w: T, h: T) -> Self {
+        Rect {
+            position: cgmath::vec2(x, y),
+            size: cgmath::vec2(w, h),
+        }
+    }
+    pub fn cast<U>(self) -> Rect<U>
+    where
+        T: NumCast + Copy,
+        U: NumCast + Copy,
+    {
+        Rect {
+            position: self.position.cast::<U>().unwrap(),
+            size: self.size.cast::<U>().unwrap(),
+        }
+    }
+}
 
 pub trait Renderable {
-    fn render<'data>(&'data self, pass: &mut wgpu::RenderPass<'data>);
+    fn render<'data>(&'data self, rctx: &RenderContext<'data>, pass: &mut wgpu::RenderPass<'data>);
 }
 
 pub fn instance_matrix_desc<'a>() -> wgpu::VertexBufferLayout<'a> {
