@@ -145,11 +145,23 @@ fn main() {
         winit::event::Event::WindowEvent { event, .. } => match event {
             winit::event::WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
             winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Escape) {
-                    ctx.song()
-                        .unwrap()
-                        .pause(kira::instance::PauseInstanceSettings { fade_tween: None })
-                        .unwrap();
+                if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Escape)
+                    && input.state == winit::event::ElementState::Pressed
+                {
+                    let mut song = ctx.song().unwrap();
+                    match song.state() {
+                        kira::instance::InstanceState::Playing => {
+                            song.pause(kira::instance::PauseInstanceSettings { fade_tween: None })
+                                .unwrap();
+                        }
+                        kira::instance::InstanceState::Paused(_) => song
+                            .resume(kira::instance::ResumeInstanceSettings {
+                                fade_tween: None,
+                                rewind_to_pause_position: false,
+                            })
+                            .unwrap(),
+                        _ => panic!(),
+                    }
                 }
             }
             _ => {}
