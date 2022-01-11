@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use futures::task::SpawnExt;
+use iced_winit::winit;
 use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text};
 use winit::{
     event_loop::{ControlFlow, EventLoop},
@@ -25,19 +26,124 @@ pub mod math;
 
 pub type ArcLock<T> = std::sync::Arc<std::sync::RwLock<T>>;
 
+pub struct Controls {
+    pub background_color: iced::Color,
+    sliders: [iced::slider::State; 3],
+}
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    BackgroundColorChanged(iced::Color),
+}
+
+impl Controls {
+    pub fn new() -> Controls {
+        Controls {
+            background_color: iced::Color::BLACK,
+            sliders: Default::default(),
+        }
+    }
+}
+
+impl iced_winit::Program for Controls {
+    type Renderer = iced_wgpu::Renderer;
+    type Message = Message;
+
+    fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
+        match message {
+            Message::BackgroundColorChanged(color) => {
+                self.background_color = color;
+            }
+        }
+
+        iced::Command::none()
+    }
+
+    fn view(&mut self) -> iced::Element<Self::Message> {
+        let [r, g, b] = &mut self.sliders;
+        let background_color = self.background_color;
+
+        let sliders = iced::Row::new()
+            .width(iced::Length::Units(500))
+            .spacing(20)
+            .push(
+                iced::Slider::new(r, 0.0..=1.0, background_color.r, move |r| {
+                    Message::BackgroundColorChanged(iced::Color {
+                        r,
+                        ..background_color
+                    })
+                })
+                .step(0.01),
+            )
+            .push(
+                iced::Slider::new(g, 0.0..=1.0, background_color.g, move |g| {
+                    Message::BackgroundColorChanged(iced::Color {
+                        g,
+                        ..background_color
+                    })
+                })
+                .step(0.01),
+            )
+            .push(
+                iced::Slider::new(b, 0.0..=1.0, background_color.b, move |b| {
+                    Message::BackgroundColorChanged(iced::Color {
+                        b,
+                        ..background_color
+                    })
+                })
+                .step(0.01),
+            );
+
+        iced::Row::new()
+            .width(iced::Length::Fill)
+            .height(iced::Length::Fill)
+            .align_items(iced::Alignment::End)
+            .push(
+                iced::Column::new()
+                    .width(iced::Length::Fill)
+                    .align_items(iced::Alignment::End)
+                    .push(
+                        iced::Column::new()
+                            .padding(10)
+                            .spacing(10)
+                            .push(iced::Text::new("Background color").color(iced::Color::WHITE))
+                            .push(sliders)
+                            .push(
+                                iced::Text::new(format!("{:?}", background_color))
+                                    .size(14)
+                                    .color(iced::Color::WHITE),
+                            ),
+                    ),
+            )
+            .into()
+    }
+}
+
 fn main() {
     dotenv::dotenv().ok();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
-        .with_inner_size(winit::dpi::LogicalSize {
+        .with_inner_size(winit::dpi::PhysicalSize::<u32> {
             width: 1024,
             height: 576,
         })
         .build(&event_loop)
         .unwrap();
 
+    let physical_size = window.inner_size();
+    let viewport = iced_wgpu::Viewport::with_physical_size(
+        iced::Size::new(physical_size.width, physical_size.height),
+        window.scale_factor(),
+    );
+    let mut cursor_position = winit::dpi::PhysicalPosition::new(-1.0, -1.0);
+    let mut modifiers = winit::event::ModifiersState::default();
+    let mut clipboard = iced_winit::Clipboard::connect(&window);
+
     let ctx = std::sync::Arc::new(GameContext::new(
-        ogfx::context::Context::new(&window),
+        ogfx::context::Context::new(
+            &window,
+            cgmath::vec2(physical_size.width, physical_size.height),
+        ),
         kira::manager::AudioManager::new(kira::manager::AudioManagerSettings::default()).unwrap(),
     ));
     let gfx = &ctx.gfx;
@@ -141,32 +247,79 @@ fn main() {
         label: None,
     });
 
+    let controls = Controls::new();
+    let mut debug = iced_winit::Debug::new();
+    let mut renderer = iced_wgpu::Renderer::new(iced_wgpu::Backend::new(
+        &gfx.device,
+        iced_wgpu::Settings::default(),
+        gfx.surface_format,
+    ));
+
+    let mut state = iced_winit::program::State::new(
+        controls,
+        viewport.logical_size(),
+        &mut renderer,
+        &mut debug,
+    );
+
     event_loop.run(move |event, _target, control_flow| match event {
-        winit::event::Event::WindowEvent { event, .. } => match event {
-            winit::event::WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-            winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Escape)
-                    && input.state == winit::event::ElementState::Pressed
-                {
-                    let mut song = ctx.song().unwrap();
-                    match song.state() {
-                        kira::instance::InstanceState::Playing => {
-                            song.pause(kira::instance::PauseInstanceSettings { fade_tween: None })
+        winit::event::Event::WindowEvent { event, .. } => {
+            match event {
+                winit::event::WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                    if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Escape)
+                        && input.state == winit::event::ElementState::Pressed
+                    {
+                        let mut song = ctx.song().unwrap();
+                        match song.state() {
+                            kira::instance::InstanceState::Playing => {
+                                song.pause(kira::instance::PauseInstanceSettings {
+                                    fade_tween: None,
+                                })
                                 .unwrap();
+                            }
+                            kira::instance::InstanceState::Paused(_) => song
+                                .resume(kira::instance::ResumeInstanceSettings {
+                                    fade_tween: None,
+                                    rewind_to_pause_position: false,
+                                })
+                                .unwrap(),
+                            _ => panic!(),
                         }
-                        kira::instance::InstanceState::Paused(_) => song
-                            .resume(kira::instance::ResumeInstanceSettings {
-                                fade_tween: None,
-                                rewind_to_pause_position: false,
-                            })
-                            .unwrap(),
-                        _ => panic!(),
                     }
                 }
+                winit::event::WindowEvent::CursorMoved { position, .. } => {
+                    cursor_position = position;
+                }
+                winit::event::WindowEvent::ModifiersChanged(new_modifiers) => {
+                    modifiers = new_modifiers;
+                }
+                _ => {}
             }
-            _ => {}
-        },
+            if let Some(event) =
+                iced_winit::conversion::window_event(&event, window.scale_factor(), modifiers)
+            {
+                state.queue_event(event);
+            }
+        }
         winit::event::Event::MainEventsCleared => {
+            if !state.is_queue_empty() {
+                let _ = state.update(
+                    viewport.logical_size(),
+                    iced_winit::conversion::cursor_position(
+                        cursor_position,
+                        viewport.scale_factor(),
+                    ),
+                    &mut renderer,
+                    &mut clipboard,
+                    &mut debug,
+                );
+
+                window.request_redraw();
+            }
+
+            let program = state.program();
+
             if load_game_resource_job.finished() {
                 if let Some(game_loading_resource) = &mut next_scene_resource {
                     match game_loading_resource {
@@ -210,9 +363,12 @@ fn main() {
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.1,
+                                    /*r: 0.1,
                                     g: 0.2,
-                                    b: 0.3,
+                                    b: 0.3,*/
+                                    r: program.background_color.r as _,
+                                    g: program.background_color.g as _,
+                                    b: program.background_color.b as _,
                                     a: 1.0,
                                 }),
                                 store: true,
@@ -260,6 +416,18 @@ fn main() {
                     gfx.dimensions.y,
                 )
                 .unwrap();
+
+            renderer.with_primitives(|backend, primitive| {
+                backend.present(
+                    &gfx.device,
+                    &mut staging_belt,
+                    &mut command_encoder,
+                    &frame_view,
+                    primitive,
+                    &viewport,
+                    &debug.overlay(),
+                );
+            });
 
             staging_belt.finish();
 

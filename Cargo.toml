@@ -10,7 +10,7 @@ log = "0.4.14"
 wgpu = "0.12.0"
 cgmath = { version = "0.18.0", features = ["mint"] }
 pollster = "0.2.4"
-winit = "0.26.0"
+# winit = "0.26.0"
 dotenv = "0.15.0"
 crevice = { version = "0.8.0", features = ["cgmath"] }
 bytemuck = "1.7.3"
@@ -28,3 +28,5 @@ atlas-packer = { path = "atlas-packer" }
 num-traits = "0.2.14"
 ogfx = { path = "ogfx" }
 iced = { git = "https://github.com/iced-rs/iced", rev = "1a31aef" }
+iced_wgpu = { git = "https://github.com/iced-rs/iced", rev = "1a31aef" }
+iced_winit = { git = "https://github.com/iced-rs/iced", rev = "1a31aef" }

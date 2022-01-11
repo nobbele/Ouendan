@@ -2,7 +2,6 @@ use crate::{transform::RawTransform, Transform};
 use crevice::std140::{AsStd140, Std140};
 use std::{cell::RefCell, sync::Arc};
 use wgpu::util::DeviceExt;
-use winit::window::Window;
 
 pub struct RenderContext<'a> {
     projection_stack: RefCell<Vec<&'a wgpu::BindGroup>>,
@@ -60,7 +59,10 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(window: &Window) -> Self {
+    pub fn new(
+        window: &impl raw_window_handle::HasRawWindowHandle,
+        dimensions: cgmath::Vector2<u32>,
+    ) -> Self {
         let instance = wgpu::Instance::new(wgpu::Backends::PRIMARY);
         let surface = unsafe { instance.create_surface(window) };
 
@@ -81,15 +83,14 @@ impl Context {
         .unwrap();
 
         let surface_format = surface.get_preferred_format(&adapter).unwrap();
-        let inner_size = window.inner_size();
 
         surface.configure(
             &device,
             &wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: surface_format,
-                width: inner_size.width,
-                height: inner_size.height,
+                width: dimensions.x,
+                height: dimensions.y,
                 present_mode: wgpu::PresentMode::Mailbox,
             },
         );
@@ -161,8 +162,6 @@ impl Context {
             label: None,
         });
 
-        let dimensions = cgmath::vec2(inner_size.width, inner_size.height);
-
         Context {
             surface,
             surface_format,
@@ -173,7 +172,7 @@ impl Context {
             view_bind_group_layout,
             identity_view_buffer: Arc::new(view_buffer),
             identity_view_binding: Arc::new(view_binding),
-            aspect_ratio: inner_size.width as f32 / inner_size.height as f32,
+            aspect_ratio: dimensions.x as f32 / dimensions.y as f32,
             dimensions,
         }
     }

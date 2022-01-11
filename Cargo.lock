@@ -1342,7 +1342,7 @@ dependencies = [
  "thiserror",
  "winapi",
  "window_clipboard",
- "winit 0.26.0 (git+https://github.com/iced-rs/winit?rev=02a12380960cec2f351c09a33d6a7cc2789d96a6)",
+ "winit",
 ]
 
 [[package]]
@@ -2102,9 +2102,9 @@ dependencies = [
  "image",
  "num-traits",
  "pollster",
+ "raw-window-handle 0.4.2",
  "slotmap",
  "wgpu",
- "winit 0.26.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2168,6 +2168,8 @@ dependencies = [
  "dotenv",
  "futures",
  "iced",
+ "iced_wgpu",
+ "iced_winit",
  "image",
  "kira",
  "log",
@@ -2182,7 +2184,6 @@ dependencies = [
  "slotmap",
  "wgpu",
  "wgpu_glyph",
- "winit 0.26.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3201,40 +3202,6 @@ dependencies = [
  "clipboard_wayland",
  "clipboard_x11",
  "raw-window-handle 0.3.4",
-]
-
-[[package]]
-name = "winit"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70466a5f4825cc88c92963591b06dbc255420bffe19d847bfcda475e82d079c0"
-dependencies = [
- "bitflags",
- "block",
- "cocoa",
- "core-foundation 0.9.2",
- "core-graphics 0.22.3",
- "core-video-sys",
- "dispatch",
- "instant",
- "lazy_static",
- "libc",
- "log",
- "mio",
- "ndk 0.5.0",
- "ndk-glue 0.5.0",
- "ndk-sys",
- "objc",
- "parking_lot",
- "percent-encoding",
- "raw-window-handle 0.4.2",
- "smithay-client-toolkit",
- "wasm-bindgen",
- "wayland-client",
- "wayland-protocols",
- "web-sys",
- "winapi",
- "x11-dl",
 ]
 
 [[package]]
