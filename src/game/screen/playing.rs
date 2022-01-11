@@ -1,13 +1,8 @@
 use ogfx::{Buffer, Rect, RenderContext, Renderable, Sprite, Transform};
-use osu_types::SpecificHitObject;
 use slotmap::SlotMap;
 
 use crate::{
-    game::{
-        chart::{self, Chart, ChartData},
-        graphics::slider,
-        ChartProgress, GameContext,
-    },
+    game::{chart, graphics::slider, ChartProgress, GameContext},
     job::{spawn_job, JobHandle},
     math,
 };
@@ -90,93 +85,12 @@ impl Screen for PlayingScreen {
             .unwrap();
 
         ctx.set_song(instance_handle);
-        ctx.set_chart(Chart {
-            title: loading_res.beatmap.info.metadata.title.clone(),
-            modifiers: chart::Modifiers { approach_rate: 5.5 },
-        });
-        let opx_per_secs = loading_res
-            .beatmap
-            .timing_points
-            .iter()
-            .scan(0.0, |bpm, tp| {
-                Some((
-                    tp.time,
-                    if tp.uninherited {
-                        *bpm = tp.beat_length;
-                        let bps = *bpm / 60.0;
-                        (100.0 * bps) / 1.0
-                    } else {
-                        let multiplier = -1.0 / (tp.beat_length / 100.0);
-                        let sv = loading_res.beatmap.info.difficulty.slider_multiplier * multiplier;
-                        let bps = *bpm / 60.0;
-                        (100.0 * bps) / sv
-                    },
-                ))
-            })
-            .collect::<Vec<_>>();
-        fn opx_to_oepx(x: i16, y: i16) -> cgmath::Vector2<f32> {
-            cgmath::vec2(
-                math::remap(0.0, 512.0, -320.0, 320.0, x as f32),
-                math::remap(0.0, 384.0, -240.0, 240.0, y as f32),
-            )
-        }
-        ctx.set_chart_data(ChartData {
-            objects: loading_res
-                .beatmap
-                .hit_objects
-                .iter()
-                .map(|hit_object| chart::HitObject {
-                    /*position: cgmath::vec2(
-                        hit_object.position.0 as f32,
-                        hit_object.position.1 as f32,
-                    ),*/
-                    position: opx_to_oepx(
-                        hit_object.position.0 as i16,
-                        hit_object.position.1 as i16,
-                    ),
-                    time: (hit_object.time as f32) / 1000.0,
-                    data: match &hit_object.specific {
-                        SpecificHitObject::Circle => chart::HitObjectData::Circle,
-                        SpecificHitObject::Slider {
-                            curve_type,
-                            curve_points,
-                            slides,
-                            length,
-                        } => {
-                            let opx_per_sec = opx_per_secs
-                                .iter()
-                                .find(|p| p.0 >= hit_object.time as i32)
-                                .unwrap()
-                                .1;
-                            chart::HitObjectData::Slider(chart::Slider {
-                                control_points: curve_points
-                                    .iter()
-                                    //.map(|p| cgmath::vec2(p.x as f32, p.y as f32))
-                                    .map(|p| opx_to_oepx(p.x, p.y))
-                                    .collect::<Vec<_>>(),
-                                curve_type: match curve_type {
-                                    osu_types::CurveType::Bezier => chart::CurveType::Bezier,
-                                    osu_types::CurveType::Perfect => chart::CurveType::Perfect,
-                                    osu_types::CurveType::Linear => chart::CurveType::Linear,
-                                    osu_types::CurveType::Catmull => todo!(),
-                                },
-                                repeat: (*slides as u32 - 1),
-                                velocity: opx_per_sec,
-                                length: *length,
-                            })
-                        }
-                        SpecificHitObject::Spinner { end_time: _ } => todo!(),
-                        SpecificHitObject::ManiaHold {} => todo!(),
-                    },
-                })
-                .collect(),
-        });
+        let (chart_info, chart_data) = chart::load_osu_beatmap(&loading_res.beatmap);
+        ctx.set_chart_info(chart_info);
+        ctx.set_chart_data(chart_data);
         ctx.set_chart_progress(ChartProgress { passed_index: 0 });
 
-        println!(
-            "Playing chart '{}'",
-            ctx.chart().as_ref().unwrap().title.clone()
-        );
+        println!("Playing chart '{:#?}'", ctx.chart().as_ref().unwrap());
 
         let playfield = Sprite::new(
             &ctx.gfx,

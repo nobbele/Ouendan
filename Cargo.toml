@@ -27,3 +27,4 @@ lyon = "0.17.10"
 atlas-packer = { path = "atlas-packer" }
 num-traits = "0.2.14"
 ogfx = { path = "ogfx" }
+iced = { git = "https://github.com/iced-rs/iced", rev = "1a31aef" }

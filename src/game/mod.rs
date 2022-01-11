@@ -1,5 +1,5 @@
 use self::{
-    chart::{Chart, ChartData},
+    chart::{ChartData, ChartInfo},
     graphics::atlas::Atlas,
 };
 use kira::{instance::handle::InstanceHandle, manager::AudioManager};
@@ -35,7 +35,7 @@ impl GameContext {
     pub fn new(gfx: GraphicsContext, audio: AudioManager) -> Self {
         let mut resources = Resources::new();
         resources.insert::<Option<Song>>(None);
-        resources.insert::<Option<Chart>>(None);
+        resources.insert::<Option<ChartInfo>>(None);
         resources.insert::<Option<ChartData>>(None);
         resources.insert::<Option<ChartProgress>>(None);
         resources.insert::<Option<Arc<GameResources>>>(None);
@@ -70,12 +70,12 @@ impl GameContext {
         self.get_raw_opt::<Song>().as_ref().map(|s| s.0.clone())
     }
 
-    pub fn set_chart(&self, chart: Chart) {
-        *self.resources.get_mut::<Option<Chart>>().unwrap() = Some(chart);
+    pub fn set_chart_info(&self, chart: ChartInfo) {
+        *self.resources.get_mut::<Option<ChartInfo>>().unwrap() = Some(chart);
     }
 
-    pub fn chart(&self) -> resources::Ref<Option<Chart>> {
-        self.get_raw_opt::<Chart>()
+    pub fn chart(&self) -> resources::Ref<Option<ChartInfo>> {
+        self.get_raw_opt::<ChartInfo>()
     }
 
     pub fn set_chart_data(&self, chart_data: ChartData) {
