@@ -90,9 +90,9 @@ fn osu_ar_to_secs(ar: f32) -> f32 {
 
 #[test]
 fn test_difficulty_maps() {
-    assert!(osu_ar_to_secs(9.0) - 0.600 <= f32::EPSILON);
-    assert!(osu_ar_to_secs(6.0) - 1.050 <= f32::EPSILON);
-    assert!(osu_ar_to_secs(3.0) - 1.440 <= f32::EPSILON);
+    assert!((osu_ar_to_secs(9.0) - 0.600).abs() <= f32::EPSILON);
+    assert!((osu_ar_to_secs(6.0) - 1.050).abs() <= f32::EPSILON);
+    assert!((osu_ar_to_secs(3.0) - 1.440).abs() <= f32::EPSILON);
 }
 
 pub fn load_osu_beatmap(beatmap: &osu_parser::Beatmap) -> (ChartInfo, ChartData) {
@@ -105,18 +105,17 @@ pub fn load_osu_beatmap(beatmap: &osu_parser::Beatmap) -> (ChartInfo, ChartData)
     let opx_per_secs = beatmap
         .timing_points
         .iter()
-        .scan(0.0, |bpm, tp| {
+        .scan(0.0, |bps, tp| {
             Some((
                 tp.time,
                 if tp.uninherited {
-                    *bpm = tp.beat_length;
-                    let bps = *bpm / 60.0;
-                    (100.0 * bps) / 1.0
+                    *bps = 1000.0 / tp.beat_length;
+                    let px_per_beat = beatmap.info.difficulty.slider_multiplier * 100.0;
+                    px_per_beat * *bps
                 } else {
-                    let multiplier = -1.0 / (tp.beat_length / 100.0);
-                    let sv = beatmap.info.difficulty.slider_multiplier * multiplier;
-                    let bps = *bpm / 60.0;
-                    (100.0 * bps) / sv
+                    let velocity = -100.0 / (tp.beat_length);
+                    let px_per_beat = beatmap.info.difficulty.slider_multiplier * velocity * 100.0;
+                    px_per_beat * *bps
                 },
             ))
         })
@@ -171,4 +170,26 @@ pub fn load_osu_beatmap(beatmap: &osu_parser::Beatmap) -> (ChartInfo, ChartData)
             .collect(),
     };
     (info, data)
+}
+
+#[test]
+fn test_osu_conversion() {
+    let beatmap = osu_parser::load_content(
+        include_str!("../../positive MAD-crew - Mynarco Addiction (Okoratu) [Ex].osu"),
+        osu_parser::BeatmapParseOptions::default(),
+    )
+    .unwrap();
+    let (_info, data) = load_osu_beatmap(&beatmap);
+    fn check(correct: f32, value: f32) {
+        assert!(
+            (value - correct).abs() <= f32::EPSILON,
+            "Correct: {}, Value: {}",
+            correct,
+            value
+        );
+    }
+    let first = &data.objects[0];
+    check(4.068, first.time);
+    // ?? why??
+    check(4.399, first.end_time());
 }

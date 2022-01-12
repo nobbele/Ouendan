@@ -2,9 +2,9 @@ use ogfx::{Buffer, Rect, RenderContext, Renderable, Sprite, Transform};
 use slotmap::SlotMap;
 
 use crate::{
-    game::{chart, graphics::slider, ChartProgress, GameContext},
+    game::{chart, graphics::slider, ChartProgress, GameContext, LogLayer},
     job::{spawn_job, JobHandle},
-    math,
+    llog, math,
 };
 
 use super::{Screen, Updatable};
@@ -96,7 +96,7 @@ impl Screen for PlayingScreen {
         ctx.set_chart_info(chart_info);
         ctx.set_chart_data(chart_data);
         ctx.set_chart_progress(ChartProgress {
-            passed_index: 0,
+            pending_start: 0,
             combo: 0,
             progress: 0.0,
         });
@@ -182,31 +182,66 @@ impl Updatable for PlayingScreen {
 
         let song_position = song.position() as f32;
 
-        let mut display_objects = chart_data.objects[chart_progress.passed_index..]
-            .iter()
-            .enumerate()
-            .skip_while(|(_, obj)| {
-                song_position < obj.time - chart.modifiers.approach_seconds()
-                    || song_position > obj.end_time()
+        let display_objects = {
+            if let Some(start_idx) = chart_data.objects[chart_progress.pending_start..]
+                .iter()
+                .position(|obj| song_position >= obj.time - chart.modifiers.approach_seconds())
+            {
+                let start = start_idx + chart_progress.pending_start;
+                // This end index refers to the index of the object after the last one to be displayed.
+                // This has to pass at least one object, the start one.
+                let end = chart_data.objects[start..]
+                    .iter()
+                    .position(|obj| song_position < obj.end_time())
+                    .unwrap()
+                    + start
+                    + 1;
+                start..end.min(chart_data.objects.len())
+            } else {
+                chart_progress.pending_start..chart_progress.pending_start
+            }
+        };
+        chart_progress.pending_start = display_objects.end;
+
+        let active_object = {
+            let mut it = chart_data
+                .objects
+                .iter()
+                .enumerate()
+                .filter(|(_, obj)| song_position >= obj.time && song_position < obj.end_time())
+                .map(|(idx, _)| idx);
+            it.next().map(|v| {
+                let next = it.next();
+                assert_eq!(
+                    next,
+                    None,
+                    "Multiple active objects. (2B!) ({}ms)",
+                    chart_data.objects[next.unwrap()].time * 1000.0
+                );
+                v
             })
-            .take_while(|(_, obj)| obj.time - chart.modifiers.approach_seconds() < song_position)
-            .map(|(idx, _)| chart_progress.passed_index + idx)
-            .collect::<Vec<_>>();
+        };
+
+        if let Some(i) = active_object {
+            llog!(ctx, LogLayer::Playfield, "acitve_object (index {})", i);
+        }
 
         let mut to_remove = vec![];
 
         for (idx, visible_hitobject) in self.visible_objects.iter() {
-            if let Some(display_object_idx) = display_objects
-                .iter()
-                .position(|el| *el == visible_hitobject.hitobject_index)
-            {
-                display_objects.remove(display_object_idx);
-            } else {
+            let hitobject = &chart_data.objects[visible_hitobject.hitobject_index];
+            if song_position > hitobject.end_time() {
+                llog!(
+                    ctx,
+                    LogLayer::Playfield,
+                    "Despawning! (time={}ms end_time={}ms) at {}",
+                    hitobject.time * 1000.0,
+                    hitobject.end_time() * 1000.0,
+                    song_position
+                );
                 to_remove.push(idx);
                 continue;
             }
-
-            let hitobject = &chart_data.objects[visible_hitobject.hitobject_index];
             if let VisibleHitObjectRef::Circle { approach, .. }
             | VisibleHitObjectRef::Slider { approach, .. } = visible_hitobject.refs
             {
@@ -256,6 +291,14 @@ impl Updatable for PlayingScreen {
 
         for display_object in display_objects {
             let hitobject = &chart_data.objects[display_object];
+            llog!(
+                ctx,
+                LogLayer::Playfield,
+                "Spawning! (time={}ms end_time={}ms) at {}",
+                hitobject.time * 1000.0,
+                hitobject.end_time() * 1000.0,
+                song_position
+            );
             let trans = Transform {
                 position: cgmath::vec2(hitobject.position.x, hitobject.position.y),
                 scale: cgmath::vec2(0.125, 0.125),

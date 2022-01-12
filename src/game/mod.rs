@@ -15,6 +15,15 @@ pub mod graphics;
 pub mod screen;
 pub mod ui;
 
+#[macro_export]
+macro_rules! llog {
+    ($ctx:ident, $layer:expr, $($arg:tt)*) => {
+        if $ctx.log_layer_enabled($layer) {
+            println!("[{:?}] {}", $layer, format!($($arg)*))
+        }
+    };
+}
+
 pub struct GameResources {
     pub hitobject_atlas: Atlas<String>,
     pub playfield: ArcTexture,
@@ -24,10 +33,15 @@ struct Song(pub InstanceHandle);
 
 #[derive(Copy, Clone)]
 pub struct ChartProgress {
-    pub passed_index: usize,
+    pub pending_start: usize,
 
     pub combo: u32,
     pub progress: f32,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum LogLayer {
+    Playfield,
 }
 
 pub struct GameContext {
@@ -35,6 +49,7 @@ pub struct GameContext {
     pub audio: Mutex<AudioManager>,
     pub resources: Resources,
     pub game_resources: Arc<Mutex<Option<GameResources>>>,
+    active_log_layers: Mutex<Vec<LogLayer>>,
 
     pub dirty: AtomicBool,
 }
@@ -51,8 +66,17 @@ impl GameContext {
             gfx: Arc::new(gfx),
             audio: Mutex::new(audio),
             game_resources: Arc::new(Mutex::new(None)),
+            active_log_layers: Mutex::new(Vec::new()),
             dirty: AtomicBool::new(true),
         }
+    }
+
+    pub fn enable_log_layer(&self, layer: LogLayer) {
+        self.active_log_layers.lock().unwrap().push(layer);
+    }
+
+    pub fn log_layer_enabled(&self, layer: LogLayer) -> bool {
+        self.active_log_layers.lock().unwrap().contains(&layer)
     }
 
     pub fn set_song(&self, song: InstanceHandle) {
