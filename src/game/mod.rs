@@ -5,14 +5,15 @@ use self::{
 use kira::{instance::handle::InstanceHandle, manager::AudioManager};
 use ogfx::{ArcTexture, GraphicsContext};
 use resources::{Resource, Resources};
-use std::{
-    cell::RefCell,
-    sync::{Arc, Mutex},
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
 };
 
 pub mod chart;
 pub mod graphics;
 pub mod screen;
+pub mod ui;
 
 pub struct GameResources {
     pub hitobject_atlas: Atlas<String>,
@@ -21,14 +22,21 @@ pub struct GameResources {
 
 struct Song(pub InstanceHandle);
 
+#[derive(Copy, Clone)]
 pub struct ChartProgress {
     pub passed_index: usize,
+
+    pub combo: u32,
+    pub progress: f32,
 }
 
 pub struct GameContext {
     pub gfx: Arc<GraphicsContext>,
-    pub audio: Mutex<RefCell<AudioManager>>,
+    pub audio: Mutex<AudioManager>,
     pub resources: Resources,
+    pub game_resources: Arc<Mutex<Option<GameResources>>>,
+
+    pub dirty: AtomicBool,
 }
 
 impl GameContext {
@@ -38,31 +46,17 @@ impl GameContext {
         resources.insert::<Option<ChartInfo>>(None);
         resources.insert::<Option<ChartData>>(None);
         resources.insert::<Option<ChartProgress>>(None);
-        resources.insert::<Option<Arc<GameResources>>>(None);
         GameContext {
             resources,
             gfx: Arc::new(gfx),
-            audio: Mutex::new(RefCell::new(audio)),
+            audio: Mutex::new(audio),
+            game_resources: Arc::new(Mutex::new(None)),
+            dirty: AtomicBool::new(true),
         }
     }
 
-    pub fn set_game_resources(&self, res: GameResources) {
-        *self
-            .resources
-            .get_mut::<Option<Arc<GameResources>>>()
-            .unwrap() = Some(Arc::new(res));
-    }
-
-    pub fn game_resources(&self) -> Arc<GameResources> {
-        self.resources
-            .get::<Option<Arc<GameResources>>>()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .clone()
-    }
-
     pub fn set_song(&self, song: InstanceHandle) {
+        self.dirty.store(true, Ordering::SeqCst);
         *self.resources.get_mut::<Option<Song>>().unwrap() = Some(Song(song));
     }
 
@@ -71,6 +65,7 @@ impl GameContext {
     }
 
     pub fn set_chart_info(&self, chart: ChartInfo) {
+        self.dirty.store(true, Ordering::SeqCst);
         *self.resources.get_mut::<Option<ChartInfo>>().unwrap() = Some(chart);
     }
 
@@ -79,6 +74,7 @@ impl GameContext {
     }
 
     pub fn set_chart_data(&self, chart_data: ChartData) {
+        self.dirty.store(true, Ordering::SeqCst);
         *self.resources.get_mut::<Option<ChartData>>().unwrap() = Some(chart_data);
     }
 
@@ -87,11 +83,12 @@ impl GameContext {
     }
 
     pub fn set_chart_progress(&self, chart_progress: ChartProgress) {
+        self.dirty.store(true, Ordering::SeqCst);
         *self.resources.get_mut::<Option<ChartProgress>>().unwrap() = Some(chart_progress);
     }
 
-    pub fn chart_progress(&self) -> resources::Ref<Option<ChartProgress>> {
-        self.get_raw_opt::<ChartProgress>()
+    pub fn chart_progress(&self) -> Option<ChartProgress> {
+        self.get_raw_opt::<ChartProgress>().as_ref().map(|&s| s)
     }
 
     fn get_raw_opt<T: Resource>(&self) -> resources::Ref<Option<T>> {

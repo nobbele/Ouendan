@@ -47,6 +47,8 @@ pub struct PlayingScreen {
     #[allow(dead_code)]
     playfield_projection_buffer: Buffer,
     playfield_projection_binding: wgpu::BindGroup,
+
+    end_time: f32,
 }
 
 impl Screen for PlayingScreen {
@@ -71,13 +73,10 @@ impl Screen for PlayingScreen {
     }
 
     fn new(ctx: &GameContext, loading_res: PlayingResources) -> Self {
-        let game_resources = ctx.game_resources();
-
         let mut sound_handle = ctx
             .audio
             .lock()
             .unwrap()
-            .borrow_mut()
             .add_sound(loading_res.sound)
             .unwrap();
         let instance_handle = sound_handle
@@ -86,11 +85,26 @@ impl Screen for PlayingScreen {
 
         ctx.set_song(instance_handle);
         let (chart_info, chart_data) = chart::load_osu_beatmap(&loading_res.beatmap);
+
+        let end_time = chart_data
+            .objects
+            .iter()
+            .map(|el| el.end_time())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+
         ctx.set_chart_info(chart_info);
         ctx.set_chart_data(chart_data);
-        ctx.set_chart_progress(ChartProgress { passed_index: 0 });
+        ctx.set_chart_progress(ChartProgress {
+            passed_index: 0,
+            combo: 0,
+            progress: 0.0,
+        });
 
         println!("Playing chart '{:#?}'", ctx.chart().as_ref().unwrap());
+
+        let game_resources = ctx.game_resources.lock().unwrap();
+        let game_resources = game_resources.as_ref().unwrap();
 
         let playfield = Sprite::new(
             &ctx.gfx,
@@ -146,6 +160,8 @@ impl Screen for PlayingScreen {
 
             playfield_projection_buffer,
             playfield_projection_binding,
+
+            end_time,
         }
     }
 }
@@ -162,7 +178,7 @@ impl Updatable for PlayingScreen {
         let song = song.unwrap();
         let chart = chart.as_ref().unwrap();
         let chart_data = chart_data.as_ref().unwrap();
-        let chart_progress = chart_progress.as_ref().unwrap();
+        let mut chart_progress = chart_progress.unwrap();
 
         let song_position = song.position() as f32;
 
@@ -207,6 +223,8 @@ impl Updatable for PlayingScreen {
         }
 
         for idx in to_remove {
+            chart_progress.combo += 1;
+
             let visible_hitobject = self.visible_objects.remove(idx).unwrap();
             match visible_hitobject.refs {
                 VisibleHitObjectRef::Circle {
@@ -233,7 +251,8 @@ impl Updatable for PlayingScreen {
             }
         }
 
-        let game_resources = ctx.game_resources();
+        let game_resources = ctx.game_resources.lock().unwrap();
+        let game_resources = game_resources.as_ref().unwrap();
 
         for display_object in display_objects {
             let hitobject = &chart_data.objects[display_object];
@@ -298,6 +317,10 @@ impl Updatable for PlayingScreen {
                 }
             }
         }
+
+        chart_progress.progress = song_position / self.end_time;
+
+        ctx.set_chart_progress(chart_progress);
     }
 }
 

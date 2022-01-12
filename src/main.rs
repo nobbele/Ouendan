@@ -1,8 +1,9 @@
 #![feature(drain_filter)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::atomic::Ordering};
 
 use futures::task::SpawnExt;
+use game::ui::game_ui::GameUI;
 use iced_winit::winit;
 use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text};
 use winit::{
@@ -25,99 +26,6 @@ pub mod job;
 pub mod math;
 
 pub type ArcLock<T> = std::sync::Arc<std::sync::RwLock<T>>;
-
-pub struct Controls {
-    pub background_color: iced::Color,
-    sliders: [iced::slider::State; 3],
-}
-
-#[derive(Debug, Clone)]
-pub enum Message {
-    BackgroundColorChanged(iced::Color),
-}
-
-impl Controls {
-    pub fn new() -> Controls {
-        Controls {
-            background_color: iced::Color::BLACK,
-            sliders: Default::default(),
-        }
-    }
-}
-
-impl iced_winit::Program for Controls {
-    type Renderer = iced_wgpu::Renderer;
-    type Message = Message;
-
-    fn update(&mut self, message: Self::Message) -> iced::Command<Self::Message> {
-        match message {
-            Message::BackgroundColorChanged(color) => {
-                self.background_color = color;
-            }
-        }
-
-        iced::Command::none()
-    }
-
-    fn view(&mut self) -> iced::Element<Self::Message> {
-        let [r, g, b] = &mut self.sliders;
-        let background_color = self.background_color;
-
-        let sliders = iced::Row::new()
-            .width(iced::Length::Units(500))
-            .spacing(20)
-            .push(
-                iced::Slider::new(r, 0.0..=1.0, background_color.r, move |r| {
-                    Message::BackgroundColorChanged(iced::Color {
-                        r,
-                        ..background_color
-                    })
-                })
-                .step(0.01),
-            )
-            .push(
-                iced::Slider::new(g, 0.0..=1.0, background_color.g, move |g| {
-                    Message::BackgroundColorChanged(iced::Color {
-                        g,
-                        ..background_color
-                    })
-                })
-                .step(0.01),
-            )
-            .push(
-                iced::Slider::new(b, 0.0..=1.0, background_color.b, move |b| {
-                    Message::BackgroundColorChanged(iced::Color {
-                        b,
-                        ..background_color
-                    })
-                })
-                .step(0.01),
-            );
-
-        iced::Row::new()
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-            .align_items(iced::Alignment::End)
-            .push(
-                iced::Column::new()
-                    .width(iced::Length::Fill)
-                    .align_items(iced::Alignment::End)
-                    .push(
-                        iced::Column::new()
-                            .padding(10)
-                            .spacing(10)
-                            .push(iced::Text::new("Background color").color(iced::Color::WHITE))
-                            .push(sliders)
-                            .push(
-                                iced::Text::new(format!("{:?}", background_color))
-                                    .size(14)
-                                    .color(iced::Color::WHITE),
-                            ),
-                    ),
-            )
-            .into()
-    }
-}
 
 fn main() {
     dotenv::dotenv().ok();
@@ -247,7 +155,7 @@ fn main() {
         label: None,
     });
 
-    let controls = Controls::new();
+    let game_ui = GameUI::new(ctx.clone());
     let mut debug = iced_winit::Debug::new();
     let mut renderer = iced_wgpu::Renderer::new(iced_wgpu::Backend::new(
         &gfx.device,
@@ -256,7 +164,7 @@ fn main() {
     ));
 
     let mut state = iced_winit::program::State::new(
-        controls,
+        game_ui,
         viewport.logical_size(),
         &mut renderer,
         &mut debug,
@@ -303,7 +211,7 @@ fn main() {
             }
         }
         winit::event::Event::MainEventsCleared => {
-            if !state.is_queue_empty() {
+            if !state.is_queue_empty() || ctx.dirty.load(Ordering::SeqCst) {
                 let _ = state.update(
                     viewport.logical_size(),
                     iced_winit::conversion::cursor_position(
@@ -318,7 +226,7 @@ fn main() {
                 window.request_redraw();
             }
 
-            let program = state.program();
+            let _program = state.program();
 
             if load_game_resource_job.finished() {
                 if let Some(game_loading_resource) = &mut next_scene_resource {
@@ -334,7 +242,7 @@ fn main() {
                 }
             } else {
                 if let Some(game_resources) = load_game_resource_job.poll().unwrap() {
-                    ctx.set_game_resources(game_resources);
+                    *ctx.game_resources.lock().unwrap() = Some(game_resources);
                 }
             }
 
@@ -363,12 +271,9 @@ fn main() {
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    /*r: 0.1,
+                                    r: 0.1,
                                     g: 0.2,
-                                    b: 0.3,*/
-                                    r: program.background_color.r as _,
-                                    g: program.background_color.g as _,
-                                    b: program.background_color.b as _,
+                                    b: 0.3,
                                     a: 1.0,
                                 }),
                                 store: true,
